@@ -1,0 +1,2 @@
+# golden
+a nim benchmark
