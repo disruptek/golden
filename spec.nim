@@ -26,6 +26,8 @@ type
     stderr*: FileDetail
 
   InvocationInfo* = ref object of GoldObject
+    binary*: FileDetail
+    arguments*: seq[string]
     runtime*: RuntimeInfo
     output*: OutputInfo
 
@@ -39,8 +41,9 @@ type
 
   CompilationInfo* = ref object of GoldObject
     compiler*: CompilerInfo
-    runtime*: RuntimeInfo
+    invocation*: InvocationInfo
     source*: FileDetail
+    binary*: FileDetail
 
   BenchmarkResult* = ref object of GoldObject
     binary*: FileDetail
@@ -59,21 +62,23 @@ method `$`*(gold: GoldObject): string {.base.} =
   result = gold.name & ":" & $gold.oid & " entry " & $gold.entry
 
 proc digestOfFileContents(path: string): MD5Digest =
+  assert path.fileExists
   let data = readFile(path)
   result = data.toMD5
 
 proc newFileDetail*(path: string): FileDetail =
   new result
   result.initGold "file"
-  result.path = path
+  result.path = path.absolutePath.normalizedPath
   result.digest = digestOfFileContents(path)
 
 proc newFileDetail*(path: string; info: FileInfo): FileDetail =
   result = newFileDetail(path)
   result.info = info
 
-template newFileDetailWithInfo*(path: string): FileDetail =
-  newFileDetail(path, getFileInfo(path))
+proc newFileDetailWithInfo*(path: string): FileDetail =
+  assert path.fileExists
+  result = newFileDetail(path, getFileInfo(path))
 
 proc newCompilerInfo*(hint: string = ""): CompilerInfo =
   var path: string
@@ -88,6 +93,9 @@ proc newCompilerInfo*(hint: string = ""): CompilerInfo =
   else:
     path = hint
   result.binary = newFileDetailWithInfo(path)
+
+proc `$`*(detail: FileDetail): string =
+  result = detail.path
 
 proc `$`*(compiler: CompilerInfo): string =
   let digest = $compiler.binary.digest
@@ -104,6 +112,23 @@ proc newGolden*(): Golden =
 proc newBenchmarkResult*(): BenchmarkResult =
   new result
   result.initGold "bench"
+
+proc newInvocationInfo*(binary: FileDetail; args: seq[string] = @[]): InvocationInfo =
+  new result
+  result.initGold "invoked"
+  result.binary = binary
+  result.arguments = args
+
+proc newCompilationInfo*(compiler: CompilerInfo = nil): CompilationInfo =
+  new result
+  result.initGold "compile"
+  result.compiler = compiler
+  if result.compiler == nil:
+    result.compiler = newCompilerInfo()
+
+proc newOutputInfo*(): OutputInfo =
+  new result
+  result.initGold "output"
 
 proc appearsBenchmarkable*(path: string): bool =
   ## true if the path looks like something we can bench
