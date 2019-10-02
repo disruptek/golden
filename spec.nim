@@ -3,6 +3,7 @@ import times
 import md5
 import oids
 import strutils
+import strformat
 
 type
   GoldObject* = ref object of RootObj
@@ -16,14 +17,14 @@ type
     path*: string
 
   RuntimeInfo* = ref object of GoldObject
-    wall*: float64
+    wall*: Duration
     cpu*: float64
     memory*: int
 
   OutputInfo* = ref object of GoldObject
     code*: int
-    stdout*: FileDetail
-    stderr*: FileDetail
+    stdout*: string
+    stderr*: string
 
   InvocationInfo* = ref object of GoldObject
     binary*: FileDetail
@@ -65,6 +66,26 @@ proc digestOfFileContents(path: string): MD5Digest =
   assert path.fileExists
   let data = readFile(path)
   result = data.toMD5
+
+proc render*(d: Duration): string {.raises: [].} =
+  ## cast a duration to a nice string
+  let
+    n = d.inNanoseconds
+    ss = (n div 1_000_000_000) mod 1_000
+    ms = (n div 1_000_000) mod 1_000
+    us = (n div 1_000) mod 1_000
+    ns = (n div 1) mod 1_000
+  try:
+    return fmt"{ss:>3}s {ms:>3}ms {us:>3}μs {ns:>3}ns"
+  except:
+    return [$ss, $ms, $us, $ns].join(" ")
+
+proc `$`*(runtime: RuntimeInfo): string =
+  result = runtime.wall.render
+
+proc newRuntimeInfo*(): RuntimeInfo =
+  new result
+  result.initGold "runtime"
 
 proc newFileDetail*(path: string): FileDetail =
   new result
