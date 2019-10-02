@@ -4,6 +4,9 @@ import oids
 import asyncfutures
 import asyncdispatch
 import strutils
+import osproc
+import selectors
+import terminal
 import logging
 
 import cligen
@@ -20,6 +23,35 @@ proc close(database: GoldenDatabase) {.async.} =
   ## close the database
   waitfor database.db.close
 
+proc invoke(binary: FileDetail, args: seq[string]): Future[InvocationInfo] {.async.} =
+  type
+    HandleKind = enum Input, Output, Errors, Finished
+  echo "invoke against ", binary
+  var
+    invocation = newInvocationInfo(binary, args = args)
+    process = startProcess(binary.path, args = args, options = {})
+    watcher = newSelector[HandleKind]()
+    events: seq[ReadyKey]
+
+  echo "process running"
+  invocation.output = newOutputInfo()
+
+  #watcher.registerHandle(process.outputHandle.int, {Read}, Output)
+  #watcher.registerHandle(process.errorHandle.int, {Read}, Errors)
+  watcher.registerProcess(process.processId, Finished)
+
+  echo "registered"
+  while true:
+    echo "select"
+    let count = watcher.selectInto(1000, events)
+    echo $count, " events"
+    for n in events:
+      echo n.fd, " ", n.errorCode.repr, " ", n.events.repr
+
+  invocation.output.code = process.waitForExit
+  echo "invoke code ", invocation.output.code
+  result = invocation
+
 proc loadDatabaseForFile(filename: string): Future[GoldenDatabase] {.async.} =
   ## load a database using a filename
   new result
@@ -27,10 +59,31 @@ proc loadDatabaseForFile(filename: string): Future[GoldenDatabase] {.async.} =
   result.path = filename
   result.db = await newDatabaseImpl(result.path)
 
+proc pathToCompilationTarget(filename: string): string =
+  ## calculate the path of a source file's compiled binary output
+  assert filename.endsWith ".nim"
+  var (head, tail) = filename.absolutePath.normalizedPath.splitPath
+  tail.removeSuffix ".nim"
+  result = head / tail
+
+proc compileFile(filename: string): Future[CompilationInfo] {.async.} =
+  ## compile a source file and yield details of the event
+  var
+    comp = newCompilationInfo()
+  let
+    target = pathToCompilationTarget(filename)
+    compiler = comp.compiler
+
+  comp.source = newFileDetailWithInfo(filename)
+  comp.invocation = waitfor invoke(compiler.binary, @["c", comp.source.path])
+  comp.binary = newFileDetailWithInfo(target)
+  result = comp
+
 proc benchmark(gold: Golden; filename: string): Future[BenchmarkResult] {.async.} =
   ## benchmark a file
   var bench = newBenchmarkResult()
   var db = waitfor loadDatabaseForFile(filename)
+  let compilation = waitfor compileFile(filename)
   result = bench
   waitfor db.close
 
