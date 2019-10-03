@@ -50,17 +50,16 @@ proc dumpFailure(invocation: InvocationInfo; commandline: string) =
     stdmsg().writeLine "exit code: " & $invocation.output.code
     stdmsg().writeLine "command-line:\n" & commandline
 
-proc invoke(binary: FileDetail, args: seq[string] = @[]): Future[InvocationInfo] {.async.} =
+proc monitorProcess(invocation: var InvocationInfo; process: Process) =
+  ## keep a process's output streams empty, saving them into the
+  ## invocation with other runtime details
   type
     Monitor = enum
       Output = "the process has some data for us on stdout"
       Errors = "the process has some data for us on stderr"
       Finished = "the process has finished"
-  let
-    commandline = binary.path & " " & args.join(" ")
+
   var
-    invocation = newInvocationInfo(binary, args = args)
-    process = startProcess(binary.path, args = args, options = {})
     clock = getTime()
     watcher = newSelector[Monitor]()
 
@@ -99,6 +98,17 @@ proc invoke(binary: FileDetail, args: seq[string] = @[]): Future[InvocationInfo]
   except Exception as e:
     # merely report errors for database safety
     stdmsg().writeLine e.msg
+
+proc invoke(binary: FileDetail, args: seq[string] = @[]): Future[InvocationInfo] {.async.} =
+  ## run a binary and yield info about its invocation
+  let
+    commandline = binary.path & " " & args.join(" ")
+  var
+    invocation = newInvocationInfo(binary, args = args)
+    process = startProcess(binary.path, args = args, options = {})
+
+  # watch the process to gather i/o and runtime details
+  invocation.monitorProcess(process)
 
   # cleanup the process
   invocation.output.code = process.waitForExit
