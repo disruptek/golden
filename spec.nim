@@ -84,7 +84,7 @@ proc render*(d: Duration): string {.raises: [].} =
 proc `$`*(runtime: RuntimeInfo): string =
   result = runtime.wall.render
 
-proc len[T](list: SinglyLinkedList[T]): int =
+proc len*[T](list: SinglyLinkedList[T]): int =
   var head = list.head
   while head != nil:
     result.inc
