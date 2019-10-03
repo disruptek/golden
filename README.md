@@ -13,7 +13,27 @@ $ nimble install golden
 ```
 $ golden somesource.nim
 # compiles your code with -d:danger and runs it many times
+# it will dump runtime statistics with fibonacci frequency
 # ctrl-c when you've had enough
+# ...
+bench:5d9652e4615eca6d3e35c38a entry 2019-10-03T15:58:28-04:00
+/some/path/to/a/binary
+compilation(s) -- RunningStat(
+  number of probes: 1
+  max: 3.018017831
+  min: 3.018017831
+  sum: 3.018017831
+  mean: 3.018017831
+  std deviation: 0.0
+)
+ invocation(s) -- RunningStat(
+  number of probes: 84348
+  max: 0.014843757
+  min: 0.000195513
+  sum: 48.61967556299996
+  mean: 0.0005764176455043348
+  std deviation: 0.0001040502276687006
+)
 ```
 
 ## Theory of Operation
