@@ -65,7 +65,7 @@ proc monitor(process: Process; invocation: var InvocationInfo) =
 
   # monitor whether the process has finished or produced output
   when defined(useProcessSignal):
-    watcher.registerProcess(process.processId, Finished)
+    let signal = watcher.registerProcess(process.processId, Finished)
   watcher.registerHandle(process.outputHandle.int, {Read}, Output)
   watcher.registerHandle(process.errorHandle.int, {Read}, Errors)
 
@@ -101,6 +101,8 @@ proc monitor(process: Process; invocation: var InvocationInfo) =
 
   try:
     # cleanup the selector
+    when defined(useProcessSignal):
+      watcher.unregister signal
     watcher.close
   except Exception as e:
     # merely report errors for database safety
