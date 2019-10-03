@@ -1,5 +1,17 @@
 # golden
-a nim benchmark
+
+A benchmark for compile-time and/or runtime Nim.
+
+Currently pretty crude, but things are coming together.
+
+## Usage
+```
+$ golden somesource.nim
+# compiles your code with -d:danger and runs it many times
+# ctrl-c when you've had enough
+```
+
+## Theory of Operation
 
 ### Measure something, anything
 
@@ -32,3 +44,6 @@ Nothing good ever came of it.
 ### But I might want to provide some of the ingredients
 
 Sure, sure, we'll use 'em.
+
+## License
+MIT
