@@ -3,6 +3,7 @@ import times
 import lists
 import md5
 import oids
+import stats
 import strutils
 import strformat
 
@@ -17,10 +18,14 @@ type
     info*: FileInfo
     path*: string
 
+  WallDuration = Duration
+  CpuDuration = float64
+  MemorySize = int
+
   RuntimeInfo* = ref object of GoldObject
-    wall*: Duration
-    cpu*: float64
-    memory*: int
+    wall*: WallDuration
+    cpu*: CpuDuration
+    memory*: MemorySize
 
   OutputInfo* = ref object of GoldObject
     code*: int
@@ -47,10 +52,16 @@ type
     source*: FileDetail
     binary*: FileDetail
 
+  RunningResult*[T] = ref object of GoldObject
+    list: SinglyLinkedList[T]
+    wall: RunningStat
+    cpu: RunningStat
+    memory: RunningStat
+
   BenchmarkResult* = ref object of GoldObject
     binary*: FileDetail
-    compilations*: SinglyLinkedList[CompilationInfo]
-    invocations*: SinglyLinkedList[InvocationInfo]
+    compilations*: RunningResult[CompilationInfo]
+    invocations*: RunningResult[InvocationInfo]
 
   Golden* = ref object of GoldObject
     compiler*: CompilerInfo
@@ -92,8 +103,18 @@ proc len*[T](list: SinglyLinkedList[T]): int =
 
 proc `$`*(bench: BenchmarkResult): string =
   result = $bench.GoldObject
-  result &= "\n" & $bench.compilations.len
-  result &= "\n" & $bench.invocations.len
+  result &= "\ncompilation(s) -- " & $bench.compilations.wall
+  result &= "\n invocation(s) -- " & $bench.invocations.wall
+
+proc add*[T: InvocationInfo](running: RunningResult[T]; value: T) =
+  ## for stats, pull out the invocation duration from invocation info
+  running.list.append value
+  running.wall.push value.runtime.wall.inNanoseconds.float64 / 1_000_000_000
+
+proc add*[T: CompilationInfo](running: RunningResult[T]; value: T) =
+  ## for stats, pull out the invocation duration from compilation info
+  running.list.append value
+  running.wall.push value.invocation.runtime.wall.inNanoseconds.float64 / 1_000_000_000
 
 proc newRuntimeInfo*(): RuntimeInfo =
   new result
@@ -142,11 +163,16 @@ proc newGolden*(): Golden =
   result.initGold "golden"
   result.compiler = newCompilerInfo()
 
+proc newRunningResult*[T](): RunningResult[T] =
+  new result
+  result.initGold "running"
+  result.list = initSinglyLinkedList[T]()
+
 proc newBenchmarkResult*(): BenchmarkResult =
   new result
   result.initGold "bench"
-  result.compilations = initSinglyLinkedList[CompilationInfo]()
-  result.invocations = initSinglyLinkedList[InvocationInfo]()
+  result.compilations = newRunningResult[CompilationInfo]()
+  result.invocations = newRunningResult[InvocationInfo]()
 
 proc newOutputInfo*(): OutputInfo =
   new result
@@ -175,3 +201,7 @@ proc appearsBenchmarkable*(path: string): bool =
   if detail.info.kind notin {pcFile, pcLinkToFile}:
     return false
   result = true
+
+proc fibonacci*(x: int): int =
+  result = if x <= 2: 1
+  else: fibonacci(x - 1) + fibonacci(x - 2)

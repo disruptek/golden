@@ -65,16 +65,26 @@ proc benchmark(gold: Golden; filename: string): Future[BenchmarkResult] {.async.
     waitfor db.close
   try:
     let compilation = waitfor compileFile(filename)
-    bench.compilations.append compilation
+    bench.compilations.add compilation
     invocation = compilation.invocation
+    var
+      outputs, fib = 0
+      clock = getTime()
+      secs: Duration
     while invocation.output.code == 0:
       when defined(debugFdLeak):
         {.warning: "this build is for debugging fd leak".}
         invocation = waitfor invoke("/usr/bin/lsof", "-p", getCurrentProcessId())
         stdmsg().writeLine invocation.output.stdout
       invocation = waitfor invoke(compilation.binary)
-      bench.invocations.append invocation
-      stdmsg().writeLine $invocation.runtime
+      bench.invocations.add invocation
+      secs = getTime() - clock
+      if secs.inSeconds < fib:
+        continue
+      outputs.inc
+      fib = fibonacci(outputs)
+      clock = getTime()
+      stdmsg().writeLine bench
   except Exception as e:
     stdmsg().writeLine e.msg & "\ncleaning up..."
   result = bench
