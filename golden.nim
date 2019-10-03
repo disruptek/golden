@@ -17,6 +17,8 @@ import spec
 import db
 
 type
+  BenchmarkusInterruptus = Exception
+
   GoldenDatabase = ref object of GoldObject
     path: string
     db: DatabaseImpl
@@ -135,12 +137,15 @@ proc benchmark(gold: Golden; filename: string): Future[BenchmarkResult] {.async.
   var db = waitfor loadDatabaseForFile(filename)
   defer:
     await db.close
-  let compilation = waitfor compileFile(filename)
-  while compilation.invocation.output.code == 0:
-    let invocation = waitfor invoke(compilation.binary)
-    if invocation.output.code != 0:
-      break
-    stdmsg().writeLine $invocation.runtime
+  try:
+    let compilation = waitfor compileFile(filename)
+    while compilation.invocation.output.code == 0:
+      let invocation = waitfor invoke(compilation.binary)
+      if invocation.output.code != 0:
+        break
+      stdmsg().writeLine $invocation.runtime
+  except BenchmarkusInterruptus:
+    echo "cleaning up..."
   result = bench
 
 proc goldenCommand(args: seq[string]) =
@@ -151,7 +156,7 @@ proc goldenCommand(args: seq[string]) =
   # capture interrupts
   if stdmsg().isatty:
     proc sigInt() {.noconv.} =
-      quit(0)
+      raise newException(BenchmarkusInterruptus, "")
     setControlCHook(sigInt)
 
   for filename in args.items:
