@@ -9,6 +9,7 @@ import osproc
 import selectors
 import terminal
 import logging
+import lists
 
 import cligen
 import foreach
@@ -17,7 +18,7 @@ import spec
 import db
 
 type
-  BenchmarkusInterruptus = Exception
+  BenchmarkusInterruptus = IOError
 
   GoldenDatabase = ref object of GoldObject
     path: string
@@ -31,7 +32,7 @@ proc drainStreamInto(stream: Stream; output: var string) =
   while not stream.atEnd:
     output &= stream.readChar
 
-proc drainReadyKey(ready: ReadyKey; stream: Stream; output: var string) =
+proc drain(ready: ReadyKey; stream: Stream; output: var string) =
   if Event.Read in ready.events:
     stream.drainStreamInto(output)
   elif {Event.Error} == ready.events:
@@ -47,57 +48,64 @@ proc dumpFailure(invocation: InvocationInfo; commandline: string) =
     if invocation.output.stderr.len != 0:
       stdmsg().writeLine invocation.output.stderr
     stdmsg().writeLine "exit code: " & $invocation.output.code
-    stdmsg().writeLine "our command-line:\n" & commandline
+    stdmsg().writeLine "command-line:\n" & commandline
 
 proc invoke(binary: FileDetail, args: seq[string] = @[]): Future[InvocationInfo] {.async.} =
   type
-    Watch = enum Input, Output, Errors, Finished
+    Monitor = enum
+      Output = "the process has some data for us on stdout"
+      Errors = "the process has some data for us on stderr"
+      Finished = "the process has finished"
   let
     commandline = binary.path & " " & args.join(" ")
   var
     invocation = newInvocationInfo(binary, args = args)
     process = startProcess(binary.path, args = args, options = {})
     clock = getTime()
-    watcher = newSelector[Watch]()
+    watcher = newSelector[Monitor]()
 
-  invocation.output = newOutputInfo()
-  invocation.runtime = newRuntimeInfo()
-
+  # monitor whether the process has finished or produced output
   watcher.registerHandle(process.outputHandle.int, {Read}, Output)
   watcher.registerHandle(process.errorHandle.int, {Read}, Errors)
   watcher.registerProcess(process.processId, Finished)
 
-  while true:
+  block running:
     try:
-      let events = watcher.select(1000)
-      foreach ready in events.items of ReadyKey:
-        var kind: Watch = watcher.getData(ready.fd)
-        case kind:
-        of Output:
-          drainReadyKey(ready, process.outputStream, invocation.output.stdout)
-        of Errors:
-          drainReadyKey(ready, process.errorStream, invocation.output.stderr)
-        of Finished:
-          process.outputStream.drainStreamInto invocation.output.stdout
-          process.errorStream.drainStreamInto invocation.output.stderr
-          watcher.close
-        of Input:
-          raise newException(Defect, "what are you doing here, little friend?")
-      if process.peekExitCode != -1:
-        break
+      while true:
+        let events = watcher.select(1000)
+        foreach ready in events.items of ReadyKey:
+          var kind: Monitor = watcher.getData(ready.fd)
+          case kind:
+          of Output:
+            # keep the output stream from blocking
+            ready.drain(process.outputStream, invocation.output.stdout)
+          of Errors:
+            # keep the errors stream from blocking
+            ready.drain(process.errorStream, invocation.output.stderr)
+          of Finished:
+            # check the clock early
+            invocation.runtime.wall = getTime() - clock
+            # drain any data in the streams
+            process.outputStream.drainStreamInto invocation.output.stdout
+            process.errorStream.drainStreamInto invocation.output.stderr
+            break running
     except IOSelectorsException as e:
+      # merely report errors for database safety
       stdmsg().writeLine "error talkin' to process: " & e.msg
-      break
-
-  # i had to move this here.  go figure.
-  invocation.output.code = process.waitForExit
-  invocation.runtime.wall = getTime() - clock
 
   try:
+    # cleanup the selector
     watcher.close
-  except:
-    discard
+  except Exception as e:
+    # merely report errors for database safety
+    stdmsg().writeLine e.msg
 
+  # cleanup the process
+  invocation.output.code = process.waitForExit
+  process.close
+
+  # if it failed, dump the stdout/stderr we collected,
+  # report the exit code, and provide the command-line
   if invocation.output.code != 0:
     invocation.dumpFailure(commandline)
   result = invocation
@@ -132,20 +140,22 @@ proc compileFile(filename: string): Future[CompilationInfo] {.async.} =
   result = comp
 
 proc benchmark(gold: Golden; filename: string): Future[BenchmarkResult] {.async.} =
-  ## benchmark a file
+  ## benchmark a source file
   var bench = newBenchmarkResult()
   var db = waitfor loadDatabaseForFile(filename)
   defer:
-    await db.close
+    waitfor db.close
   try:
     let compilation = waitfor compileFile(filename)
+    bench.compilations.append compilation
     while compilation.invocation.output.code == 0:
       let invocation = waitfor invoke(compilation.binary)
+      bench.invocations.append invocation
       if invocation.output.code != 0:
         break
       stdmsg().writeLine $invocation.runtime
-  except BenchmarkusInterruptus:
-    echo "cleaning up..."
+  except Exception as e:
+    stdmsg().writeLine e.msg & "\ncleaning up..."
   result = bench
 
 proc goldenCommand(args: seq[string]) =
@@ -163,7 +173,7 @@ proc goldenCommand(args: seq[string]) =
     if not filename.appearsBenchmarkable:
       warn "i don't know how to benchmark `" & filename & "`"
       continue
-    discard waitfor gold.benchmark(filename)
+    stdmsg().writeLine waitfor gold.benchmark(filename)
 
 when isMainModule:
   # log only warnings in release

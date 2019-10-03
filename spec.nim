@@ -1,5 +1,6 @@
 import os
 import times
+import lists
 import md5
 import oids
 import strutils
@@ -48,8 +49,8 @@ type
 
   BenchmarkResult* = ref object of GoldObject
     binary*: FileDetail
-    compilations*: seq[CompilationInfo]
-    invocations*: seq[InvocationInfo]
+    compilations*: SinglyLinkedList[CompilationInfo]
+    invocations*: SinglyLinkedList[InvocationInfo]
 
   Golden* = ref object of GoldObject
     compiler*: CompilerInfo
@@ -82,6 +83,17 @@ proc render*(d: Duration): string {.raises: [].} =
 
 proc `$`*(runtime: RuntimeInfo): string =
   result = runtime.wall.render
+
+proc len[T](list: SinglyLinkedList[T]): int =
+  var head = list.head
+  while head != nil:
+    result.inc
+    head = head.next
+
+proc `$`*(bench: BenchmarkResult): string =
+  result = $bench.GoldObject
+  result &= "\n" & $bench.compilations.len
+  result &= "\n" & $bench.invocations.len
 
 proc newRuntimeInfo*(): RuntimeInfo =
   new result
@@ -133,12 +145,20 @@ proc newGolden*(): Golden =
 proc newBenchmarkResult*(): BenchmarkResult =
   new result
   result.initGold "bench"
+  result.compilations = initSinglyLinkedList[CompilationInfo]()
+  result.invocations = initSinglyLinkedList[InvocationInfo]()
+
+proc newOutputInfo*(): OutputInfo =
+  new result
+  result.initGold "output"
 
 proc newInvocationInfo*(binary: FileDetail; args: seq[string] = @[]): InvocationInfo =
   new result
   result.initGold "invoked"
   result.binary = binary
   result.arguments = args
+  result.output = newOutputInfo()
+  result.runtime = newRuntimeInfo()
 
 proc newCompilationInfo*(compiler: CompilerInfo = nil): CompilationInfo =
   new result
@@ -146,10 +166,6 @@ proc newCompilationInfo*(compiler: CompilerInfo = nil): CompilationInfo =
   result.compiler = compiler
   if result.compiler == nil:
     result.compiler = newCompilerInfo()
-
-proc newOutputInfo*(): OutputInfo =
-  new result
-  result.initGold "output"
 
 proc appearsBenchmarkable*(path: string): bool =
   ## true if the path looks like something we can bench
