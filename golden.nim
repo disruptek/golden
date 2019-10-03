@@ -50,7 +50,7 @@ proc dumpFailure(invocation: InvocationInfo; commandline: string) =
     stdmsg().writeLine "exit code: " & $invocation.output.code
     stdmsg().writeLine "command-line:\n" & commandline
 
-proc monitorProcess(invocation: var InvocationInfo; process: Process) =
+proc monitor(process: Process; invocation: var InvocationInfo) =
   ## keep a process's output streams empty, saving them into the
   ## invocation with other runtime details
   type
@@ -64,9 +64,10 @@ proc monitorProcess(invocation: var InvocationInfo; process: Process) =
     watcher = newSelector[Monitor]()
 
   # monitor whether the process has finished or produced output
+  when defined(useProcessSignal):
+    watcher.registerProcess(process.processId, Finished)
   watcher.registerHandle(process.outputHandle.int, {Read}, Output)
   watcher.registerHandle(process.errorHandle.int, {Read}, Errors)
-  watcher.registerProcess(process.processId, Finished)
 
   block running:
     try:
@@ -88,6 +89,12 @@ proc monitorProcess(invocation: var InvocationInfo; process: Process) =
             process.outputStream.drainStreamInto invocation.output.stdout
             process.errorStream.drainStreamInto invocation.output.stderr
             break running
+        when not defined(useProcessSignal):
+          if process.peekExitCode != -1:
+            invocation.runtime.wall = getTime() - clock
+            process.outputStream.drainStreamInto invocation.output.stdout
+            process.errorStream.drainStreamInto invocation.output.stderr
+            break
     except IOSelectorsException as e:
       # merely report errors for database safety
       stdmsg().writeLine "error talkin' to process: " & e.msg
@@ -99,19 +106,22 @@ proc monitorProcess(invocation: var InvocationInfo; process: Process) =
     # merely report errors for database safety
     stdmsg().writeLine e.msg
 
+  # the process has exited, but this could be useful to Process
+  invocation.output.code = process.waitForExit
+
 proc invoke(binary: FileDetail, args: seq[string] = @[]): Future[InvocationInfo] {.async.} =
   ## run a binary and yield info about its invocation
   let
     commandline = binary.path & " " & args.join(" ")
+  when not defined(release) and not defined(danger):
+    stdmsg().writeLine commandline
   var
     invocation = newInvocationInfo(binary, args = args)
     process = startProcess(binary.path, args = args, options = {})
 
   # watch the process to gather i/o and runtime details
-  invocation.monitorProcess(process)
-
+  process.monitor(invocation)
   # cleanup the process
-  invocation.output.code = process.waitForExit
   process.close
 
   # if it failed, dump the stdout/stderr we collected,
@@ -119,6 +129,15 @@ proc invoke(binary: FileDetail, args: seq[string] = @[]): Future[InvocationInfo]
   if invocation.output.code != 0:
     invocation.dumpFailure(commandline)
   result = invocation
+
+proc invoke(path: string; args: varargs[string, `$`]): Future[InvocationInfo] =
+  ## convenience invoke()
+  var
+    arguments: seq[string]
+    binary = newFileDetailWithInfo(path)
+  for a in args:
+    arguments.add a
+  result = binary.invoke(arguments)
 
 proc loadDatabaseForFile(filename: string): Future[GoldenDatabase] {.async.} =
   ## load a database using a filename
@@ -151,18 +170,26 @@ proc compileFile(filename: string): Future[CompilationInfo] {.async.} =
 
 proc benchmark(gold: Golden; filename: string): Future[BenchmarkResult] {.async.} =
   ## benchmark a source file
-  var bench = newBenchmarkResult()
-  var db = waitfor loadDatabaseForFile(filename)
+  var
+    bench = newBenchmarkResult()
+    invocation: InvocationInfo
+    db = waitfor loadDatabaseForFile(filename)
   defer:
     waitfor db.close
   try:
     let compilation = waitfor compileFile(filename)
     bench.compilations.append compilation
-    while compilation.invocation.output.code == 0:
-      let invocation = waitfor invoke(compilation.binary)
+    invocation = compilation.invocation
+    while invocation.output.code == 0:
+      when defined(debugFdLeak):
+        {.warning: "this build is for debugging fd leak".}
+        invocation = waitfor invoke("/usr/bin/lsof", "-p", getCurrentProcessId())
+        stdmsg().writeLine invocation.output.stdout
+        if bench.invocations.len > 4000:
+          echo "sleeping for awhile"
+          sleep 60*1000
+      invocation = waitfor invoke(compilation.binary)
       bench.invocations.append invocation
-      if invocation.output.code != 0:
-        break
       stdmsg().writeLine $invocation.runtime
   except Exception as e:
     stdmsg().writeLine e.msg & "\ncleaning up..."
