@@ -74,6 +74,16 @@ template initGold*(gold: typed; text: typed) =
 method `$`*(gold: GoldObject): string {.base.} =
   result = gold.name & ":" & $gold.oid & " entry " & $gold.entry
 
+proc `$`*(detail: FileDetail): string =
+  result = detail.path
+
+proc `$`*(compiler: CompilerInfo): string =
+  let digest = $compiler.binary.digest
+  result = "Nim " & compiler.version
+  if digest != "00000000000000000000000000000000":
+    result &= " digest " & digest
+  result &= " built " & $compiler.binary.info.lastWriteTime
+
 proc digestOfFileContents(path: string): MD5Digest =
   assert path.fileExists
   let data = readFile(path)
@@ -101,8 +111,14 @@ proc len*[T](list: SinglyLinkedList[T]): int =
     result.inc
     head = head.next
 
+proc len*(running: RunningResult): int =
+  result = running.wall.n
+
 proc `$`*(bench: BenchmarkResult): string =
   result = $bench.GoldObject
+  if bench.compilations.len > 0:
+    let compilation = bench.compilations.list.head.value
+    result &= "\n" & $compilation.binary
   result &= "\ncompilation(s) -- " & $bench.compilations.wall
   result &= "\n invocation(s) -- " & $bench.invocations.wall
 
@@ -147,16 +163,6 @@ proc newCompilerInfo*(hint: string = ""): CompilerInfo =
   else:
     path = hint
   result.binary = newFileDetailWithInfo(path)
-
-proc `$`*(detail: FileDetail): string =
-  result = detail.path
-
-proc `$`*(compiler: CompilerInfo): string =
-  let digest = $compiler.binary.digest
-  result = "Nim " & compiler.version
-  if digest != "00000000000000000000000000000000":
-    result &= " digest " & digest
-  result &= " built " & $compiler.binary.info.lastWriteTime
 
 proc newGolden*(): Golden =
   new result
