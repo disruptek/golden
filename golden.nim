@@ -6,7 +6,6 @@ import asyncdispatch
 import strutils
 import logging
 import lists
-import terminal
 
 import cligen
 import foreach
@@ -96,7 +95,7 @@ proc golden(sources: seq[string]) =
   stdmsg().writeLine "golden on " & $gold.compiler
 
   # capture interrupts
-  if stdmsg().isatty:
+  if gold.interactive:
     proc sigInt() {.noconv.} =
       raise newException(BenchmarkusInterruptus, "")
     setControlCHook(sigInt)

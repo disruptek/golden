@@ -6,6 +6,7 @@ import oids
 import stats
 import strutils
 import strformat
+import terminal
 
 type
   GoldObject* = ref object of RootObj
@@ -65,6 +66,7 @@ type
 
   Golden* = ref object of GoldObject
     compiler*: CompilerInfo
+    interactive*: bool
 
 template initGold*(gold: typed; text: typed) =
   gold.oid = genOid()
@@ -168,6 +170,7 @@ proc newGolden*(): Golden =
   new result
   result.initGold "golden"
   result.compiler = newCompilerInfo()
+  result.interactive = stdmsg().isatty
 
 proc newRunningResult*[T](): RunningResult[T] =
   new result
