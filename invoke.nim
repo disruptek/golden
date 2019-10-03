@@ -83,7 +83,7 @@ proc monitor(process: Process; invocation: var InvocationInfo) =
 
   try:
     # cleanup the selector
-    when defined(useProcessSignal):
+    when defined(useProcessSignal) and not defined(debugFdLeak):
       watcher.unregister signal
     watcher.close
   except Exception as e:

@@ -72,9 +72,6 @@ proc benchmark(gold: Golden; filename: string): Future[BenchmarkResult] {.async.
         {.warning: "this build is for debugging fd leak".}
         invocation = waitfor invoke("/usr/bin/lsof", "-p", getCurrentProcessId())
         stdmsg().writeLine invocation.output.stdout
-        if bench.invocations.len > 4000:
-          echo "sleeping for awhile"
-          sleep 60*1000
       invocation = waitfor invoke(compilation.binary)
       bench.invocations.append invocation
       stdmsg().writeLine $invocation.runtime
