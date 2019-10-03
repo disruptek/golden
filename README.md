@@ -4,6 +4,11 @@ A benchmark for compile-time and/or runtime Nim.
 
 Currently pretty crude, but things are coming together.
 
+## Installation
+```
+$ nimble install golden
+```
+
 ## Usage
 ```
 $ golden somesource.nim
