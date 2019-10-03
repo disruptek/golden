@@ -89,8 +89,9 @@ proc benchmark(gold: Golden; filename: string): Future[BenchmarkResult] {.async.
     stdmsg().writeLine e.msg & "\ncleaning up..."
   result = bench
 
-proc goldenCommand(args: seq[string]) =
-  ## cli entry
+proc golden(sources: seq[string]) =
+  ## Nim benchmarking tool;
+  ## pass 1+ .nim source files to compile and benchmark
   var gold = newGolden()
   stdmsg().writeLine "golden on " & $gold.compiler
 
@@ -100,7 +101,7 @@ proc goldenCommand(args: seq[string]) =
       raise newException(BenchmarkusInterruptus, "")
     setControlCHook(sigInt)
 
-  foreach filename in args.items of string:
+  foreach filename in sources.items of string:
     if not filename.appearsBenchmarkable:
       warn "i don't know how to benchmark `" & filename & "`"
       continue
@@ -115,4 +116,4 @@ when isMainModule:
   let logger = newConsoleLogger(useStderr=true, levelThreshold=level)
   addHandler(logger)
 
-  dispatch goldenCommand
+  dispatch golden
