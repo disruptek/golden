@@ -5,6 +5,7 @@ import md5
 import oids
 import stats
 import strutils
+import terminal
 
 export lists
 export stats
@@ -16,6 +17,7 @@ type
   GoldObject* = ref object of RootObj
     oid*: Oid
     name*: string
+    description*: string
     entry*: DateTime
 
   FileDetail* = ref object of GoldObject
@@ -70,6 +72,8 @@ type
 
   Golden* = ref object of GoldObject
     compiler*: CompilerInfo
+    interactive*: bool
+    pipingOutput*: bool
 
 template initGold*(gold: typed; text: typed) =
   gold.oid = genOid()
@@ -81,6 +85,9 @@ proc digestOfFileContents(path: string): MD5Digest =
   let data = readFile(path)
   result = data.toMD5
 
+proc isEmpty*[T](list: SinglyLinkedList[T]): bool =
+  result = list.head != nil
+
 proc len*[T](list: SinglyLinkedList[T]): int =
   var head = list.head
   while head != nil:
@@ -89,6 +96,9 @@ proc len*[T](list: SinglyLinkedList[T]): int =
 
 proc len*(running: RunningResult): int =
   result = running.wall.n
+
+proc isEmpty*(running: RunningResult): bool =
+  result = running.list.isEmpty
 
 proc first*(running: RunningResult): InvocationInfo =
   assert running.len > 0
@@ -150,6 +160,8 @@ proc newGolden*(): Golden =
   new result
   result.initGold "golden"
   result.compiler = newCompilerInfo()
+  result.interactive = stdmsg().isatty
+  result.pipingOutput = not stdout.isatty
 
 proc newRunningResult*[T](): RunningResult[T] =
   new result
@@ -173,6 +185,9 @@ proc newInvocationInfo*(binary: FileDetail; args: seq[string] = @[]): Invocation
   result.arguments = args
   result.output = newOutputInfo()
   result.runtime = newRuntimeInfo()
+
+proc okay*(compilation: CompilationInfo): bool =
+  result = compilation.invocation.okay
 
 proc newCompilationInfo*(compiler: CompilerInfo = nil): CompilationInfo =
   new result

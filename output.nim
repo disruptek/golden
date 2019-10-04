@@ -1,11 +1,11 @@
 import strformat
 import strutils
 import terminal
+import json
 
 import spec
 
-proc interactive*(gold: Golden): bool =
-  stdmsg().isatty
+const ISO8601 = initTimeFormat "yyyy-MM-dd\'T\'HH:mm:ss\'.\'fff\'Z\'"
 
 proc render*(d: Duration): string {.raises: [].} =
   ## cast a duration to a nice string
@@ -51,11 +51,48 @@ proc `$`*(bench: BenchmarkResult): string =
   result &= "\ncompilation(s) -- " & $bench.compilations
   result &= "\n invocation(s) -- " & $bench.invocations
 
-proc dumpOutput*(invocation: InvocationInfo) =
+proc toJson(entry: DateTime): JsonNode =
+  result = newJString entry.format(ISO8601)
+
+method toJson(gold: GoldObject): JsonNode {.base.} =
+  result = %* {
+    "oid": newJString $gold.oid,
+    "name": newJString gold.name,
+    "description": newJString gold.description,
+    "entry": gold.entry.toJson,
+  }
+
+proc `$`*(output: OutputInfo): string =
+  if output.stdout.len != 0:
+    result &= output.stdout
+  if output.stderr.len != 0:
+    if result != "":
+      result &= "\n"
+    result &= output.stderr
+  if result != "":
+    result &= "\n"
+  result &= "exit code: " & $output.code
+
+method output*(golden: Golden; text: string) {.base.} =
+  if golden.interactive:
+    stdmsg().writeLine text
+  if golden.pipingOutput or not golden.interactive:
+    var ugly: string
+    ugly.toUgly(newJString text)
+    stdout.writeLine ugly
+
+proc output*(golden: Golden; gold: GoldObject | BenchmarkResult | CompilerInfo | OutputInfo; desc: string = "") =
+  if desc != "":
+    gold.description = desc
+  if golden.interactive:
+    stdmsg().writeLine $gold
+  if golden.pipingOutput or not golden.interactive:
+    var ugly: string
+    ugly.toUgly(gold.toJson)
+    stdout.writeLine ugly
+
+proc output*(golden: Golden; invocation: InvocationInfo; desc: string = "") =
   ## generally used to output a failed invocation
-  if invocation.output.stdout.len != 0:
-    stdmsg().writeLine invocation.output.stdout
-  if invocation.output.stderr.len != 0:
-    stdmsg().writeLine invocation.output.stderr
-  stdmsg().writeLine "exit code: " & $invocation.output.code
-  stdmsg().writeLine "command-line:\n  " & invocation.commandLine
+  let message = "command-line:\n  " & invocation.commandLine
+  golden.output invocation.output, desc
+  golden.output message

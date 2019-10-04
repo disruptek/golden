@@ -50,14 +50,11 @@ proc compileFile(filename: string): Future[CompilationInfo] {.async.} =
                                    @["c", "-d:danger", comp.source.path])
   if comp.invocation.okay:
     comp.binary = newFileDetailWithInfo(target)
-  else:
-    # if it failed, dump the stdout/stderr we collected,
-    # report the exit code, and provide the command-line
-    comp.invocation.dumpOutput
   result = comp
 
 proc benchmark(gold: Golden; filename: string; args: seq[string] = @[]): Future[BenchmarkResult] {.async.} =
   ## benchmark a source file
+  let wall = getTime()
   var
     bench = newBenchmarkResult()
     invocation: InvocationInfo
@@ -66,7 +63,8 @@ proc benchmark(gold: Golden; filename: string; args: seq[string] = @[]): Future[
     waitfor db.close
   try:
     let compilation = waitfor compileFile(filename)
-    bench.compilations.add compilation
+    if compilation.okay:
+      bench.compilations.add compilation
     invocation = compilation.invocation
     var
       outputs, fib = 0
@@ -76,21 +74,23 @@ proc benchmark(gold: Golden; filename: string; args: seq[string] = @[]): Future[
       when defined(debugFdLeak):
         {.warning: "this build is for debugging fd leak".}
         invocation = waitfor invoke("/usr/bin/lsof", "-p", getCurrentProcessId())
-        stdmsg().writeLine invocation.output.stdout
+        gold.output invocation.output.stdout
       invocation = waitfor invoke(compilation.binary, args)
       if invocation.okay:
         bench.invocations.add invocation
       else:
-        invocation.dumpOutput
+        gold.output invocation, "failed invocation"
       secs = getTime() - clock
+      let since = getTime() - wall
       if secs.inSeconds < fib:
         continue
       outputs.inc
       fib = fibonacci(outputs)
       clock = getTime()
-      stdmsg().writeLine bench
+      if not bench.invocations.isEmpty or not bench.compilations.isEmpty:
+        gold.output bench, "benchmark after " & $since.inSeconds & "s"
   except Exception as e:
-    stdmsg().writeLine e.msg & "\ncleaning up..."
+    gold.output e.msg & "\ncleaning up..."
   result = bench
 
 proc golden(args: string = ""; sources: seq[string]) =
@@ -99,7 +99,7 @@ proc golden(args: string = ""; sources: seq[string]) =
   var
     arguments: seq[string]
     gold = newGolden()
-  stdmsg().writeLine "golden on " & $gold.compiler
+  gold.output gold.compiler, "current compiler"
 
   # capture interrupts
   if gold.interactive:
