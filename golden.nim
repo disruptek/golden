@@ -1,11 +1,8 @@
 import os
-import times
-import oids
 import asyncfutures
 import asyncdispatch
 import strutils
 import logging
-import lists
 
 import cligen
 import foreach
@@ -81,7 +78,10 @@ proc benchmark(gold: Golden; filename: string; args: seq[string] = @[]): Future[
         invocation = waitfor invoke("/usr/bin/lsof", "-p", getCurrentProcessId())
         stdmsg().writeLine invocation.output.stdout
       invocation = waitfor invoke(compilation.binary, args)
-      bench.invocations.add invocation
+      if invocation.okay:
+        bench.invocations.add invocation
+      else:
+        invocation.dumpOutput
       secs = getTime() - clock
       if secs.inSeconds < fib:
         continue
@@ -113,8 +113,7 @@ proc golden(args: string = ""; sources: seq[string]) =
   foreach filename in sources.items of string:
     if not filename.appearsBenchmarkable:
       quit "don't know how to benchmark `" & filename & "`"
-    let bench = waitfor gold.benchmark(filename, arguments)
-    stdmsg().writeLine $bench
+    discard waitfor gold.benchmark(filename, arguments)
 
 when isMainModule:
   # log only warnings in release

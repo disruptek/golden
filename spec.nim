@@ -7,6 +7,10 @@ import stats
 import strutils
 
 export lists
+export stats
+export oids
+export md5
+export times
 
 type
   GoldObject* = ref object of RootObj
@@ -55,9 +59,9 @@ type
 
   RunningResult*[T] = ref object of GoldObject
     list: SinglyLinkedList[T]
-    wall: RunningStat
-    cpu: RunningStat
-    memory: RunningStat
+    wall*: RunningStat
+    cpu*: RunningStat
+    memory*: RunningStat
 
   BenchmarkResult* = ref object of GoldObject
     binary*: FileDetail

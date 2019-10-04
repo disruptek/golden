@@ -1,4 +1,3 @@
-import times
 import strformat
 import strutils
 import terminal
@@ -41,6 +40,9 @@ proc `$`*(invocation: InvocationInfo): string =
   result = $invocation.binary
   result &= invocation.arguments.join(" ")
 
+proc `$`*(running: RunningResult): string =
+  result = $running.wall
+
 proc `$`*(bench: BenchmarkResult): string =
   result = $bench.GoldObject
   if bench.invocations.len > 0:
@@ -56,4 +58,4 @@ proc dumpOutput*(invocation: InvocationInfo) =
   if invocation.output.stderr.len != 0:
     stdmsg().writeLine invocation.output.stderr
   stdmsg().writeLine "exit code: " & $invocation.output.code
-  stdmsg().writeLine "command-line:\n" & invocation.commandLine
+  stdmsg().writeLine "command-line:\n  " & invocation.commandLine
