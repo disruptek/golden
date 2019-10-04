@@ -23,15 +23,6 @@ proc drain(ready: ReadyKey; stream: Stream; output: var string) =
   else:
     assert ready.events.card == 0
 
-proc dumpFailure(invocation: InvocationInfo; commandline: string) =
-  if not invocation.okay:
-    if invocation.output.stdout.len != 0:
-      stdmsg().writeLine invocation.output.stdout
-    if invocation.output.stderr.len != 0:
-      stdmsg().writeLine invocation.output.stderr
-    stdmsg().writeLine "exit code: " & $invocation.output.code
-    stdmsg().writeLine "command-line:\n" & commandline
-
 proc monitor(process: Process; invocation: var InvocationInfo) =
   ## keep a process's output streams empty, saving them into the
   ## invocation with other runtime details
@@ -95,9 +86,9 @@ proc monitor(process: Process; invocation: var InvocationInfo) =
 
 proc invoke*(binary: FileDetail, args: seq[string] = @[]): Future[InvocationInfo] {.async.} =
   ## run a binary and yield info about its invocation
-  let
-    commandline = binary.path & " " & args.join(" ")
   when not defined(release) and not defined(danger):
+    let
+      commandline = binary.path & " " & args.join(" ")
     stdmsg().writeLine commandline
   var
     invocation = newInvocationInfo(binary, args = args)
@@ -108,10 +99,6 @@ proc invoke*(binary: FileDetail, args: seq[string] = @[]): Future[InvocationInfo
   # cleanup the process
   process.close
 
-  # if it failed, dump the stdout/stderr we collected,
-  # report the exit code, and provide the command-line
-  if not invocation.okay:
-    invocation.dumpFailure(commandline)
   result = invocation
 
 proc invoke*(path: string; args: varargs[string, `$`]): Future[InvocationInfo] =

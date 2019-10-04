@@ -13,6 +13,7 @@ import foreach
 import spec
 import invoke
 import db
+import output
 
 type
   BenchmarkusInterruptus = IOError
@@ -52,6 +53,10 @@ proc compileFile(filename: string): Future[CompilationInfo] {.async.} =
                                    @["c", "-d:danger", comp.source.path])
   if comp.invocation.okay:
     comp.binary = newFileDetailWithInfo(target)
+  else:
+    # if it failed, dump the stdout/stderr we collected,
+    # report the exit code, and provide the command-line
+    comp.invocation.dumpOutput
   result = comp
 
 proc benchmark(gold: Golden; filename: string; args: seq[string] = @[]): Future[BenchmarkResult] {.async.} =
@@ -107,9 +112,9 @@ proc golden(args: string = ""; sources: seq[string]) =
 
   foreach filename in sources.items of string:
     if not filename.appearsBenchmarkable:
-      warn "i don't know how to benchmark `" & filename & "`"
-      continue
-    stdmsg().writeLine waitfor gold.benchmark(filename, arguments)
+      quit "don't know how to benchmark `" & filename & "`"
+    let bench = waitfor gold.benchmark(filename, arguments)
+    stdmsg().writeLine $bench
 
 when isMainModule:
   # log only warnings in release

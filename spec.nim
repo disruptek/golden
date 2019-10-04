@@ -5,8 +5,8 @@ import md5
 import oids
 import stats
 import strutils
-import strformat
-import terminal
+
+export lists
 
 type
   GoldObject* = ref object of RootObj
@@ -66,46 +66,16 @@ type
 
   Golden* = ref object of GoldObject
     compiler*: CompilerInfo
-    interactive*: bool
 
 template initGold*(gold: typed; text: typed) =
   gold.oid = genOid()
   gold.name = `text`
   gold.entry = now()
 
-method `$`*(gold: GoldObject): string {.base.} =
-  result = gold.name & ":" & $gold.oid & " entry " & $gold.entry
-
-proc `$`*(detail: FileDetail): string =
-  result = detail.path
-
-proc `$`*(compiler: CompilerInfo): string =
-  let digest = $compiler.binary.digest
-  result = "Nim " & compiler.version
-  if digest != "00000000000000000000000000000000":
-    result &= " digest " & digest
-  result &= " built " & $compiler.binary.info.lastWriteTime
-
 proc digestOfFileContents(path: string): MD5Digest =
   assert path.fileExists
   let data = readFile(path)
   result = data.toMD5
-
-proc render*(d: Duration): string {.raises: [].} =
-  ## cast a duration to a nice string
-  let
-    n = d.inNanoseconds
-    ss = (n div 1_000_000_000) mod 1_000
-    ms = (n div 1_000_000) mod 1_000
-    us = (n div 1_000) mod 1_000
-    ns = (n div 1) mod 1_000
-  try:
-    return fmt"{ss:>3}s {ms:>3}ms {us:>3}μs {ns:>3}ns"
-  except:
-    return [$ss, $ms, $us, $ns].join(" ")
-
-proc `$`*(runtime: RuntimeInfo): string =
-  result = runtime.wall.render
 
 proc len*[T](list: SinglyLinkedList[T]): int =
   var head = list.head
@@ -116,17 +86,15 @@ proc len*[T](list: SinglyLinkedList[T]): int =
 proc len*(running: RunningResult): int =
   result = running.wall.n
 
-proc `$`*(invocation: InvocationInfo): string =
-  result = $invocation.binary
-  result &= invocation.arguments.join(" ")
+proc first*(running: RunningResult): InvocationInfo =
+  assert running.len > 0
+  result = running.list.head.value
 
-proc `$`*(bench: BenchmarkResult): string =
-  result = $bench.GoldObject
-  if bench.invocations.len > 0:
-    let invocation = bench.invocations.list.head.value
-    result &= "\n" & $invocation
-  result &= "\ncompilation(s) -- " & $bench.compilations.wall
-  result &= "\n invocation(s) -- " & $bench.invocations.wall
+proc commandLine*(invocation: InvocationInfo): string =
+  ## compose the full commandLine for the given invocation
+  result = invocation.binary.path
+  if invocation.arguments.len > 0:
+    result &= " " & invocation.arguments.join(" ")
 
 template okay*(invocation: InvocationInfo): bool =
   ## was the invocation successful?
@@ -178,7 +146,6 @@ proc newGolden*(): Golden =
   new result
   result.initGold "golden"
   result.compiler = newCompilerInfo()
-  result.interactive = stdmsg().isatty
 
 proc newRunningResult*[T](): RunningResult[T] =
   new result
