@@ -24,7 +24,7 @@ proc drain(ready: ReadyKey; stream: Stream; output: var string) =
     assert ready.events.card == 0
 
 proc dumpFailure(invocation: InvocationInfo; commandline: string) =
-  if invocation.output.code != 0:
+  if not invocation.okay:
     if invocation.output.stdout.len != 0:
       stdmsg().writeLine invocation.output.stdout
     if invocation.output.stderr.len != 0:
@@ -110,7 +110,7 @@ proc invoke*(binary: FileDetail, args: seq[string] = @[]): Future[InvocationInfo
 
   # if it failed, dump the stdout/stderr we collected,
   # report the exit code, and provide the command-line
-  if invocation.output.code != 0:
+  if not invocation.okay:
     invocation.dumpFailure(commandline)
   result = invocation
 

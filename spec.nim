@@ -116,13 +116,21 @@ proc len*[T](list: SinglyLinkedList[T]): int =
 proc len*(running: RunningResult): int =
   result = running.wall.n
 
+proc `$`*(invocation: InvocationInfo): string =
+  result = $invocation.binary
+  result &= invocation.arguments.join(" ")
+
 proc `$`*(bench: BenchmarkResult): string =
   result = $bench.GoldObject
-  if bench.compilations.len > 0:
-    let compilation = bench.compilations.list.head.value
-    result &= "\n" & $compilation.binary
+  if bench.invocations.len > 0:
+    let invocation = bench.invocations.list.head.value
+    result &= "\n" & $invocation
   result &= "\ncompilation(s) -- " & $bench.compilations.wall
   result &= "\n invocation(s) -- " & $bench.invocations.wall
+
+template okay*(invocation: InvocationInfo): bool =
+  ## was the invocation successful?
+  invocation.output.code == 0
 
 proc add*[T: InvocationInfo](running: RunningResult[T]; value: T) =
   ## for stats, pull out the invocation duration from invocation info

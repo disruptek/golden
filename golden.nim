@@ -50,11 +50,11 @@ proc compileFile(filename: string): Future[CompilationInfo] {.async.} =
   comp.source = newFileDetailWithInfo(filename)
   comp.invocation = waitfor invoke(compiler.binary,
                                    @["c", "-d:danger", comp.source.path])
-  if comp.invocation.output.code == 0:
+  if comp.invocation.okay:
     comp.binary = newFileDetailWithInfo(target)
   result = comp
 
-proc benchmark(gold: Golden; filename: string): Future[BenchmarkResult] {.async.} =
+proc benchmark(gold: Golden; filename: string; args: seq[string] = @[]): Future[BenchmarkResult] {.async.} =
   ## benchmark a source file
   var
     bench = newBenchmarkResult()
@@ -70,12 +70,12 @@ proc benchmark(gold: Golden; filename: string): Future[BenchmarkResult] {.async.
       outputs, fib = 0
       clock = getTime()
       secs: Duration
-    while invocation.output.code == 0:
+    while invocation.okay:
       when defined(debugFdLeak):
         {.warning: "this build is for debugging fd leak".}
         invocation = waitfor invoke("/usr/bin/lsof", "-p", getCurrentProcessId())
         stdmsg().writeLine invocation.output.stdout
-      invocation = waitfor invoke(compilation.binary)
+      invocation = waitfor invoke(compilation.binary, args)
       bench.invocations.add invocation
       secs = getTime() - clock
       if secs.inSeconds < fib:
@@ -88,10 +88,12 @@ proc benchmark(gold: Golden; filename: string): Future[BenchmarkResult] {.async.
     stdmsg().writeLine e.msg & "\ncleaning up..."
   result = bench
 
-proc golden(sources: seq[string]) =
+proc golden(args: string = ""; sources: seq[string]) =
   ## Nim benchmarking tool;
   ## pass 1+ .nim source files to compile and benchmark
-  var gold = newGolden()
+  var
+    arguments: seq[string]
+    gold = newGolden()
   stdmsg().writeLine "golden on " & $gold.compiler
 
   # capture interrupts
@@ -100,11 +102,14 @@ proc golden(sources: seq[string]) =
       raise newException(BenchmarkusInterruptus, "")
     setControlCHook(sigInt)
 
+  if args != "":
+    arguments = args.split(" ")
+
   foreach filename in sources.items of string:
     if not filename.appearsBenchmarkable:
       warn "i don't know how to benchmark `" & filename & "`"
       continue
-    stdmsg().writeLine waitfor gold.benchmark(filename)
+    stdmsg().writeLine waitfor gold.benchmark(filename, arguments)
 
 when isMainModule:
   # log only warnings in release
