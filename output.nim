@@ -21,7 +21,7 @@ proc render*(d: Duration): string {.raises: [].} =
   except:
     return [$ss, $ms, $us, $ns].join(" ")
 
-method `$`*(gold: GoldObject): string =
+method `$`*(gold: GoldObject): string {.base.} =
   result = gold.name & ":" & $gold.oid & " entry " & $gold.entry
 
 proc `$`*(detail: FileDetail): string =
