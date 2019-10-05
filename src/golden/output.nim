@@ -85,23 +85,32 @@ proc `$`*(output: OutputInfo): string =
     result &= "\n"
   result &= "exit code: " & $output.code
 
-proc output*(golden: Golden; text: string) =
-  if golden.interactive:
-    stdmsg().writeLine text
-  if dumpJson or golden.pipingOutput or not golden.interactive:
-    var ugly: string
-    ugly.toUgly(newJString text)
-    stdout.writeLine ugly
+proc jsonOutput(golden: Golden): bool =
+  result = dumpJson or golden.pipingOutput or not golden.interactive
 
-template output*(golden: Golden; gold: typed; desc: string = "") =
+proc output*(golden: Golden; content: string) =
+  stdmsg().writeLine content
+
+proc output*(golden: Golden; content: JsonNode) =
+  var ugly: string
+  ugly.toUgly(content)
+  stdout.writeLine ugly
+
+template output*(golden: Golden; gold: GoldObject; desc: string = "") =
   if desc != "":
     gold.description = desc
   if golden.interactive:
-    stdmsg().writeLine $gold
-  if dumpJson or golden.pipingOutput or not golden.interactive:
-    var ugly: string
-    toUgly(ugly, gold.toJson)
-    stdout.writeLine ugly
+    golden.output $gold
+  if jsonOutput(golden):
+    golden.output gold.toJson
+
+proc output*(golden: Golden; output: OutputInfo; desc: string = "") =
+  if golden.interactive:
+    golden.output output.stdout
+    golden.output output.stderr
+    golden.output "exit code: " & $output.code
+  if jsonOutput(golden):
+    golden.output output.toJson
 
 proc output*(golden: Golden; invocation: InvocationInfo; desc: string = "") =
   ## generally used to output a failed invocation
