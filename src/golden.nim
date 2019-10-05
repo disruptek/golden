@@ -7,10 +7,10 @@ import logging
 import cligen
 import foreach
 
-import spec
-import invoke
-import db
-import output
+import golden/spec
+import golden/invoke
+import golden/db
+import golden/output
 
 type
   BenchmarkusInterruptus = IOError
@@ -93,7 +93,7 @@ proc benchmark*(gold: Golden; filename: string; args: seq[string] = @[]): Future
     gold.output e.msg & "\ncleaning up..."
   result = bench
 
-proc golden(args: string = ""; sources: seq[string]) =
+proc golden(sources: seq[string]; args: string = "") =
   ## Nim benchmarking tool;
   ## pass 1+ .nim source files to compile and benchmark
   var
