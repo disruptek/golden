@@ -26,7 +26,7 @@ proc close(database: GoldenDatabase) {.async.} =
 proc loadDatabaseForFile(filename: string): Future[GoldenDatabase] {.async.} =
   ## load a database using a filename
   new result
-  result.initGold "db"
+  result.init "db"
   result.path = filename
   result.db = await newDatabaseImpl(result.path)
 
@@ -37,7 +37,7 @@ proc pathToCompilationTarget(filename: string): string =
   tail.removeSuffix ".nim"
   result = head / tail
 
-proc compileFile(filename: string): Future[CompilationInfo] {.async.} =
+proc compileFile*(filename: string): Future[CompilationInfo] {.async.} =
   ## compile a source file and yield details of the event
   var
     comp = newCompilationInfo()
@@ -52,7 +52,7 @@ proc compileFile(filename: string): Future[CompilationInfo] {.async.} =
     comp.binary = newFileDetailWithInfo(target)
   result = comp
 
-proc benchmark(gold: Golden; filename: string; args: seq[string] = @[]): Future[BenchmarkResult] {.async.} =
+proc benchmark*(gold: Golden; filename: string; args: seq[string] = @[]): Future[BenchmarkResult] {.async.} =
   ## benchmark a source file
   let wall = getTime()
   var

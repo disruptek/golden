@@ -75,9 +75,9 @@ type
     interactive*: bool
     pipingOutput*: bool
 
-template initGold*(gold: typed; text: typed) =
+method init*(gold: GoldObject; text: string) {.base.} =
   gold.oid = genOid()
-  gold.name = `text`
+  gold.name = text
   gold.entry = now()
 
 proc digestOfFileContents(path: string): MD5Digest =
@@ -126,11 +126,11 @@ proc add*[T: CompilationInfo](running: RunningResult[T]; value: T) =
 
 proc newRuntimeInfo*(): RuntimeInfo =
   new result
-  result.initGold "runtime"
+  result.init "runtime"
 
 proc newFileDetail*(path: string): FileDetail =
   new result
-  result.initGold "file"
+  result.init "file"
   result.path = path.absolutePath.normalizedPath
   result.digest = digestOfFileContents(path)
 
@@ -145,7 +145,7 @@ proc newFileDetailWithInfo*(path: string): FileDetail =
 proc newCompilerInfo*(hint: string = ""): CompilerInfo =
   var path: string
   new result
-  result.initGold "compiler"
+  result.init "compiler"
   result.version = NimVersion
   result.major = NimMajor
   result.minor = NimMinor
@@ -158,40 +158,46 @@ proc newCompilerInfo*(hint: string = ""): CompilerInfo =
 
 proc newGolden*(): Golden =
   new result
-  result.initGold "golden"
+  result.init "golden"
   result.compiler = newCompilerInfo()
   result.interactive = stdmsg().isatty
   result.pipingOutput = not stdout.isatty
 
 proc newRunningResult*[T](): RunningResult[T] =
   new result
-  result.initGold "running"
+  result.init "running"
   result.list = initSinglyLinkedList[T]()
 
 proc newBenchmarkResult*(): BenchmarkResult =
   new result
-  result.initGold "bench"
+  result.init "bench"
   result.compilations = newRunningResult[CompilationInfo]()
   result.invocations = newRunningResult[InvocationInfo]()
 
 proc newOutputInfo*(): OutputInfo =
   new result
-  result.initGold "output"
+  result.init "output"
+
+proc init*(invocation: var InvocationInfo; binary: FileDetail; args: seq[string] = @[]) =
+  invocation.binary = binary
+  invocation.arguments = args
+  invocation.output = newOutputInfo()
+  invocation.runtime = newRuntimeInfo()
+
+proc newInvocationInfo*(): InvocationInfo =
+  new result
+  procCall result.GoldObject.init "invoked"
 
 proc newInvocationInfo*(binary: FileDetail; args: seq[string] = @[]): InvocationInfo =
-  new result
-  result.initGold "invoked"
-  result.binary = binary
-  result.arguments = args
-  result.output = newOutputInfo()
-  result.runtime = newRuntimeInfo()
+  result = newInvocationInfo()
+  result.init(binary, args = args)
 
 proc okay*(compilation: CompilationInfo): bool =
   result = compilation.invocation.okay
 
 proc newCompilationInfo*(compiler: CompilerInfo = nil): CompilationInfo =
   new result
-  result.initGold "compile"
+  result.init "compile"
   result.compiler = compiler
   if result.compiler == nil:
     result.compiler = newCompilerInfo()

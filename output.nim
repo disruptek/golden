@@ -5,6 +5,12 @@ import json
 
 import spec
 
+# output json alongside interactive output
+when defined(dumpJson):
+  const dumpJson = true
+else:
+  const dumpJson = false
+
 const ISO8601 = initTimeFormat "yyyy-MM-dd\'T\'HH:mm:ss\'.\'fff\'Z\'"
 
 proc render*(d: Duration): string {.raises: [].} =
@@ -62,6 +68,12 @@ method toJson(gold: GoldObject): JsonNode {.base.} =
     "entry": gold.entry.toJson,
   }
 
+method toJson(output: OutputInfo): JsonNode =
+  result = procCall output.GoldObject.toJson
+  result["stdout"] = newJString output.stdout
+  result["stderr"] = newJString output.stderr
+  result["code"] = newJInt output.code
+
 proc `$`*(output: OutputInfo): string =
   if output.stdout.len != 0:
     result &= output.stdout
@@ -73,22 +85,22 @@ proc `$`*(output: OutputInfo): string =
     result &= "\n"
   result &= "exit code: " & $output.code
 
-method output*(golden: Golden; text: string) {.base.} =
+proc output*(golden: Golden; text: string) =
   if golden.interactive:
     stdmsg().writeLine text
-  if golden.pipingOutput or not golden.interactive:
+  if dumpJson or golden.pipingOutput or not golden.interactive:
     var ugly: string
     ugly.toUgly(newJString text)
     stdout.writeLine ugly
 
-proc output*(golden: Golden; gold: GoldObject | BenchmarkResult | CompilerInfo | OutputInfo; desc: string = "") =
+template output*(golden: Golden; gold: typed; desc: string = "") =
   if desc != "":
     gold.description = desc
   if golden.interactive:
     stdmsg().writeLine $gold
-  if golden.pipingOutput or not golden.interactive:
+  if dumpJson or golden.pipingOutput or not golden.interactive:
     var ugly: string
-    ugly.toUgly(gold.toJson)
+    toUgly(ugly, gold.toJson)
     stdout.writeLine ugly
 
 proc output*(golden: Golden; invocation: InvocationInfo; desc: string = "") =
