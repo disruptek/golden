@@ -12,6 +12,9 @@ import golden/invoke
 import golden/db
 import golden/output
 
+when defined(git2SetVer):
+  import golden/git as ggit
+
 type
   BenchmarkusInterruptus = IOError
 
@@ -29,6 +32,8 @@ proc loadDatabaseForFile(filename: string): Future[GoldenDatabase] {.async.} =
   result.init "db"
   result.path = filename
   result.db = await newDatabaseImpl(result.path)
+  when defined(git2SetVer):
+    ggit.init()
 
 proc pathToCompilationTarget(filename: string): string =
   ## calculate the path of a source file's compiled binary output
