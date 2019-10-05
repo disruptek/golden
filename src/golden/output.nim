@@ -88,8 +88,12 @@ proc `$`*(output: OutputInfo): string =
 proc jsonOutput(golden: Golden): bool =
   result = dumpJson or golden.pipingOutput or not golden.interactive
 
-proc output*(golden: Golden; content: string) =
-  stdmsg().writeLine content
+proc output*(golden: Golden; content: string; style: set[Style] = {}; fg: ForegroundColor = fgDefault; bg: BackgroundColor = bgDefault) =
+  let fh = stdmsg()
+  fh.setStyle style
+  fh.setForegroundColor fg
+  fh.setBackgroundColor bg
+  fh.writeLine content
 
 proc output*(golden: Golden; content: JsonNode) =
   var ugly: string
@@ -106,8 +110,10 @@ template output*(golden: Golden; gold: GoldObject; desc: string = "") =
 
 proc output*(golden: Golden; output: OutputInfo; desc: string = "") =
   if golden.interactive:
-    golden.output output.stdout
-    golden.output output.stderr
+    if output.stdout.len > 0:
+      golden.output output.stdout, fg = fgCyan
+    if output.stderr.len > 0:
+      golden.output output.stderr, fg = fgRed
     golden.output "exit code: " & $output.code
   if jsonOutput(golden):
     golden.output output.toJson
