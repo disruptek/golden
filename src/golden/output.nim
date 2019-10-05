@@ -5,6 +5,8 @@ import json
 
 import spec
 
+export terminal
+
 # output json alongside interactive output
 when defined(dumpJson):
   const dumpJson = true
@@ -109,6 +111,8 @@ template output*(golden: Golden; gold: GoldObject; desc: string = "") =
     golden.output gold.toJson
 
 proc output*(golden: Golden; output: OutputInfo; desc: string = "") =
+  if desc != "":
+    output.description = desc
   if golden.interactive:
     if output.stdout.len > 0:
       golden.output output.stdout, fg = fgCyan
