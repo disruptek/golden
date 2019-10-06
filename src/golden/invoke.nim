@@ -86,10 +86,11 @@ proc monitor(process: Process; invocation: var InvocationInfo) =
 
 proc invoke*(binary: FileDetail, args: seq[string] = @[]): Future[InvocationInfo] {.async.} =
   ## run a binary and yield info about its invocation
-  when not defined(release) and not defined(danger):
-    let
-      commandline = binary.path & " " & args.join(" ")
-    stdmsg().writeLine commandline
+  when false:
+    when not defined(release) and not defined(danger):
+      let
+        commandline = binary.path & " " & args.join(" ")
+      stdmsg().writeLine commandline
   var
     invocation = newInvocationInfo(binary, args = args)
     process = startProcess(binary.path, args = args, options = {})
