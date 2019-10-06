@@ -5,7 +5,6 @@ import strutils
 import logging
 
 import cligen
-import foreach
 
 import golden/spec
 import golden/invoke
@@ -63,7 +62,6 @@ proc compileFile*(filename: string): Future[CompilationInfo] {.async.} =
 
 proc benchmark*(gold: Golden; filename: string; args: seq[string] = @[]): Future[BenchmarkResult] {.async.} =
   ## benchmark a source file
-  let wall = getTime()
   var
     bench = newBenchmarkResult()
     invocation: InvocationInfo
@@ -90,7 +88,6 @@ proc benchmark*(gold: Golden; filename: string; args: seq[string] = @[]): Future
       else:
         gold.output invocation, "failed invocation"
       secs = getTime() - clock
-      let since = getTime() - wall
       if secs.inSeconds < fib:
         continue
       outputs.inc
@@ -98,8 +95,9 @@ proc benchmark*(gold: Golden; filename: string; args: seq[string] = @[]): Future
       clock = getTime()
       if bench.invocations.isEmpty and bench.compilations.isEmpty:
         continue
-      gold.output bench, "benchmark after " & $since.inSeconds & "s"
+      gold.output bench, "benchmark"
   except Exception as e:
+    gold.output bench, "benchmark"
     gold.output e.msg & "\ncleaning up..."
   result = bench
 
@@ -120,7 +118,7 @@ proc golden(sources: seq[string]; args: string = "") =
   if args != "":
     arguments = args.split(" ")
 
-  foreach filename in sources.items of string:
+  for filename in sources.items:
     if not filename.appearsBenchmarkable:
       quit "don't know how to benchmark `" & filename & "`"
     discard waitfor gold.benchmark(filename, arguments)
