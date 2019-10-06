@@ -4,6 +4,8 @@ import terminal
 import json
 
 import spec
+import running
+import benchmark
 
 export terminal
 

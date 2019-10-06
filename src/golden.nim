@@ -11,9 +11,11 @@ import golden/spec
 import golden/invoke
 import golden/db
 import golden/output
+import golden/benchmark
+import golden/running
 
 when defined(git2SetVer):
-  import golden/git as ggit
+  import golden/git as git
 
 type
   BenchmarkusInterruptus = IOError
@@ -25,6 +27,8 @@ type
 proc close(database: GoldenDatabase) {.async.} =
   ## close the database
   waitfor database.db.close
+  when defined(git2SetVer):
+    git.shutdown()
 
 proc loadDatabaseForFile(filename: string): Future[GoldenDatabase] {.async.} =
   ## load a database using a filename
@@ -33,7 +37,7 @@ proc loadDatabaseForFile(filename: string): Future[GoldenDatabase] {.async.} =
   result.path = filename
   result.db = await newDatabaseImpl(result.path)
   when defined(git2SetVer):
-    ggit.init()
+    git.init()
 
 proc pathToCompilationTarget(filename: string): string =
   ## calculate the path of a source file's compiled binary output
@@ -92,8 +96,9 @@ proc benchmark*(gold: Golden; filename: string; args: seq[string] = @[]): Future
       outputs.inc
       fib = fibonacci(outputs)
       clock = getTime()
-      if not bench.invocations.isEmpty or not bench.compilations.isEmpty:
-        gold.output bench, "benchmark after " & $since.inSeconds & "s"
+      if bench.invocations.isEmpty and bench.compilations.isEmpty:
+        continue
+      gold.output bench, "benchmark after " & $since.inSeconds & "s"
   except Exception as e:
     gold.output e.msg & "\ncleaning up..."
   result = bench

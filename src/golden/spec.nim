@@ -1,14 +1,15 @@
+#[
+
+basic types and operations likely shared by all modules
+
+]#
 import os
 import times
-import lists
 import md5
 import oids
-import stats
 import strutils
 import terminal
 
-export lists
-export stats
 export oids
 export md5
 export times
@@ -25,9 +26,9 @@ type
     info*: FileInfo
     path*: string
 
-  WallDuration = Duration
-  CpuDuration = float64
-  MemorySize = int
+  WallDuration* = Duration
+  CpuDuration* = float64
+  MemorySize* = int
 
   RuntimeInfo* = ref object of GoldObject
     wall*: WallDuration
@@ -59,17 +60,6 @@ type
     source*: FileDetail
     binary*: FileDetail
 
-  RunningResult*[T] = ref object of GoldObject
-    list: SinglyLinkedList[T]
-    wall*: RunningStat
-    cpu*: RunningStat
-    memory*: RunningStat
-
-  BenchmarkResult* = ref object of GoldObject
-    binary*: FileDetail
-    compilations*: RunningResult[CompilationInfo]
-    invocations*: RunningResult[InvocationInfo]
-
   Golden* = ref object of GoldObject
     compiler*: CompilerInfo
     interactive*: bool
@@ -85,25 +75,6 @@ proc digestOfFileContents(path: string): MD5Digest =
   let data = readFile(path)
   result = data.toMD5
 
-proc isEmpty*[T](list: SinglyLinkedList[T]): bool =
-  result = list.head != nil
-
-proc len*[T](list: SinglyLinkedList[T]): int =
-  var head = list.head
-  while head != nil:
-    result.inc
-    head = head.next
-
-proc len*(running: RunningResult): int =
-  result = running.wall.n
-
-proc isEmpty*(running: RunningResult): bool =
-  result = running.list.isEmpty
-
-proc first*(running: RunningResult): InvocationInfo =
-  assert running.len > 0
-  result = running.list.head.value
-
 proc commandLine*(invocation: InvocationInfo): string =
   ## compose the full commandLine for the given invocation
   result = invocation.binary.path
@@ -113,16 +84,6 @@ proc commandLine*(invocation: InvocationInfo): string =
 template okay*(invocation: InvocationInfo): bool =
   ## was the invocation successful?
   invocation.output.code == 0
-
-proc add*[T: InvocationInfo](running: RunningResult[T]; value: T) =
-  ## for stats, pull out the invocation duration from invocation info
-  running.list.append value
-  running.wall.push value.runtime.wall.inNanoseconds.float64 / 1_000_000_000
-
-proc add*[T: CompilationInfo](running: RunningResult[T]; value: T) =
-  ## for stats, pull out the invocation duration from compilation info
-  running.list.append value
-  running.wall.push value.invocation.runtime.wall.inNanoseconds.float64 / 1_000_000_000
 
 proc newRuntimeInfo*(): RuntimeInfo =
   new result
@@ -163,17 +124,6 @@ proc newGolden*(): Golden =
   result.interactive = stdmsg().isatty
   result.pipingOutput = not stdout.isatty
 
-proc newRunningResult*[T](): RunningResult[T] =
-  new result
-  result.init "running"
-  result.list = initSinglyLinkedList[T]()
-
-proc newBenchmarkResult*(): BenchmarkResult =
-  new result
-  result.init "bench"
-  result.compilations = newRunningResult[CompilationInfo]()
-  result.invocations = newRunningResult[InvocationInfo]()
-
 proc newOutputInfo*(): OutputInfo =
   new result
   result.init "output"
@@ -201,15 +151,6 @@ proc newCompilationInfo*(compiler: CompilerInfo = nil): CompilationInfo =
   result.compiler = compiler
   if result.compiler == nil:
     result.compiler = newCompilerInfo()
-
-proc appearsBenchmarkable*(path: string): bool =
-  ## true if the path looks like something we can bench
-  var detail = newFileDetailWithInfo(path)
-  if not path.endsWith(".nim"):
-    return false
-  if detail.info.kind notin {pcFile, pcLinkToFile}:
-    return false
-  result = true
 
 proc fibonacci*(x: int): int =
   result = if x <= 2: 1
