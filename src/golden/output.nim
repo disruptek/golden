@@ -5,7 +5,6 @@ import json
 
 import spec
 import running
-import benchmark
 
 export terminal
 
@@ -52,14 +51,6 @@ proc `$`*(invocation: InvocationInfo): string =
 
 proc `$`*(running: RunningResult): string =
   result = $running.wall
-
-proc `$`*(bench: BenchmarkResult): string =
-  result = $bench.GoldObject
-  if bench.invocations.len > 0:
-    let invocation = bench.invocations.first
-    result &= "\n" & $invocation
-  result &= "\ncompilation(s) -- " & $bench.compilations
-  result &= "\n invocation(s) -- " & $bench.invocations
 
 proc toJson(entry: DateTime): JsonNode =
   result = newJString entry.format(ISO8601)
