@@ -4,7 +4,6 @@ stuff related to the BenchmarkResult and benchmarking in a broad sense
 
 ]#
 import os
-import osproc
 import times
 import strutils
 
@@ -13,6 +12,7 @@ import output
 import running
 
 when defined(plotGraphs):
+  import osproc
   import plot
   import invoke
   import asyncdispatch
