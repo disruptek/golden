@@ -4,12 +4,18 @@ stuff related to the BenchmarkResult and benchmarking in a broad sense
 
 ]#
 import os
+import osproc
 import times
 import strutils
 
 import spec
 import output
 import running
+
+when defined(plotGraphs):
+  import plot
+  import invoke
+  import asyncdispatch
 
 type
   BenchmarkResult* = ref object of GoldObject
@@ -44,12 +50,24 @@ proc output*(golden: Golden; benchmark: BenchmarkResult; desc: string = "") =
   ## generally used to output a benchmark result periodically
   let since = getTime() - benchmark.entry.toTime
   golden.output desc & " after " & $since.inSeconds & "s"
-  while true:
-    golden.output $benchmark
-    var
-      dims = benchmark.invocations.wall.makeDimensions(12)
-      histo = benchmark.invocations.crudeHistogram(dims)
-    if benchmark.invocations.maybePrune(histo, dims, 0.001):
-      continue
-    golden.output $histo
-    break
+  golden.output $benchmark
+  when not defined(plotGraphs):
+    return
+  else:
+    while true:
+      var
+        dims = benchmark.invocations.wall.makeDimensions(50)
+        histo = benchmark.invocations.crudeHistogram(dims)
+      if benchmark.invocations.maybePrune(histo, dims, 0.01):
+        continue
+      golden.output $histo
+      # hangs if histo.len == 1 due to max-min == 0
+      if histo.len <= 1:
+        break
+      let filename = plot.consolePlot(benchmark.invocations.wall, histo, dims)
+      if os.getEnv("TERM", "") == "xterm-kitty":
+        let kitty = "/usr/bin/kitty"
+        if kitty.fileExists:
+          var process = startProcess(kitty, args = @["+kitten", "icat", filename], options = {poInteractive, poParentStreams})
+          discard process.waitForExit
+      break

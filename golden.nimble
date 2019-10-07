@@ -5,6 +5,8 @@ license = "MIT"
 requires "nim >= 0.20.0"
 requires "cligen >= 0.9.38"
 requires "foreach >= 1.0.2"
+requires "nimetry >= 0.1.2"
+#requires "plotly >= 0.1.0"
 requires "http://github.com/genotrance/nimgit2.git >= 0.1.0"
 #requires "nimgit2 >= 0.1.0"
 
