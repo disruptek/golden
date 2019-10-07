@@ -81,13 +81,18 @@ proc `$`*(output: OutputInfo): string =
   result &= "exit code: " & $output.code
 
 proc jsonOutput(golden: Golden): bool =
-  result = dumpJson or golden.pipingOutput or not golden.interactive
+  let flags = golden.options.flags
+  result = dumpJson or PipeOutput in flags or Interactive notin flags
 
 proc output*(golden: Golden; content: string; style: set[Style] = {}; fg: ForegroundColor = fgDefault; bg: BackgroundColor = bgDefault) =
-  let fh = stdmsg()
-  fh.setStyle style
-  fh.setForegroundColor fg
-  fh.setBackgroundColor bg
+  let
+    flags = golden.options.flags
+    fh = stdmsg()
+
+  if ColorConsole in flags or PipeOutput notin flags:
+    fh.setStyle style
+    fh.setForegroundColor fg
+    fh.setBackgroundColor bg
   fh.writeLine content
 
 proc output*(golden: Golden; content: JsonNode) =
@@ -98,7 +103,7 @@ proc output*(golden: Golden; content: JsonNode) =
 template output*(golden: Golden; gold: GoldObject; desc: string = "") =
   if desc != "":
     gold.description = desc
-  if golden.interactive:
+  if Interactive in golden.options.flags:
     golden.output $gold
   if jsonOutput(golden):
     golden.output gold.toJson
@@ -106,7 +111,7 @@ template output*(golden: Golden; gold: GoldObject; desc: string = "") =
 proc output*(golden: Golden; output: OutputInfo; desc: string = "") =
   if desc != "":
     output.description = desc
-  if golden.interactive:
+  if Interactive in golden.options.flags:
     if output.stdout.len > 0:
       golden.output output.stdout, fg = fgCyan
     if output.stderr.len > 0:

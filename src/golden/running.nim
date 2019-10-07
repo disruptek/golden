@@ -143,6 +143,13 @@ proc add*[T: CompilationInfo](running: RunningResult[T]; value: T) =
   running.list.append value
   running.wall.push value.invocation.runtime.wall.toSeconds
 
+proc truthy*(running: RunningResult; honesty: float): bool =
+  ## do we think we know enough about the running result to stop running?
+  if running.len < 3:
+    return
+  if running.wall.mean * honesty > running.wall.standardDeviation:
+    return true
+
 proc newRunningResult*[T](): RunningResult[T] =
   new result
   result.init "running"

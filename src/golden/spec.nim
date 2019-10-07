@@ -60,10 +60,18 @@ type
     source*: FileDetail
     binary*: FileDetail
 
+  GoldenFlag* = enum
+    Interactive
+    PipeOutput
+    ColorConsole
+
+  GoldenOptions* = object
+    flags*: set[GoldenFlag]
+    honesty*: float
+
   Golden* = ref object of GoldObject
     compiler*: CompilerInfo
-    interactive*: bool
-    pipingOutput*: bool
+    options*: GoldenOptions
 
 method init*(gold: GoldObject; text: string) {.base.} =
   gold.oid = genOid()
@@ -121,8 +129,11 @@ proc newGolden*(): Golden =
   new result
   result.init "golden"
   result.compiler = newCompilerInfo()
-  result.interactive = stdmsg().isatty
-  result.pipingOutput = not stdout.isatty
+  if stdmsg().isatty:
+    result.options.flags.incl Interactive
+    result.options.flags.incl ColorConsole
+  else:
+    result.options.flags.incl PipeOutput
 
 proc newOutputInfo*(): OutputInfo =
   new result

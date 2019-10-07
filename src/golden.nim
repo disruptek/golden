@@ -60,7 +60,7 @@ proc compileFile*(filename: string): Future[CompilationInfo] {.async.} =
     comp.binary = newFileDetailWithInfo(target)
   result = comp
 
-proc benchmark*(gold: Golden; filename: string; args: seq[string] = @[]): Future[BenchmarkResult] {.async.} =
+proc benchmark*(golden: Golden; filename: string; args: seq[string] = @[]): Future[BenchmarkResult] {.async.} =
   ## benchmark a source file
   var
     bench = newBenchmarkResult()
@@ -81,36 +81,53 @@ proc benchmark*(gold: Golden; filename: string; args: seq[string] = @[]): Future
       when defined(debugFdLeak):
         {.warning: "this build is for debugging fd leak".}
         invocation = waitfor invoke("/usr/bin/lsof", "-p", getCurrentProcessId())
-        gold.output invocation.output.stdout
+        golden.output invocation.output.stdout
       invocation = waitfor invoke(compilation.binary, args)
       if invocation.okay:
         bench.invocations.add invocation
       else:
-        gold.output invocation, "failed invocation"
+        golden.output invocation, "failed invocation"
       secs = getTime() - clock
-      if secs.inSeconds < fib:
-        continue
+      let truthy = bench.invocations.truthy(golden.options.honesty)
+      when not defined(debug):
+        if not truthy and secs.inSeconds < fib:
+          continue
       outputs.inc
       fib = fibonacci(outputs)
       clock = getTime()
       if bench.invocations.isEmpty and bench.compilations.isEmpty:
         continue
-      gold.output bench, "benchmark"
+      golden.output bench, "benchmark"
+      if truthy:
+        break
   except Exception as e:
-    gold.output bench, "benchmark"
-    gold.output e.msg & "\ncleaning up..."
+    golden.output bench, "benchmark"
+    golden.output e.msg & "\ncleaning up..."
   result = bench
 
-proc golden(sources: seq[string]; args: string = "") =
+proc golden(sources: seq[string]; args: string = "";
+            color: bool = false; pipe: bool = false;
+            interactive: bool = false;
+            honesty: float = 0.01) =
   ## Nim benchmarking tool;
   ## pass 1+ .nim source files to compile and benchmark
   var
     arguments: seq[string]
-    gold = newGolden()
-  gold.output gold.compiler, "current compiler"
+    golden = newGolden()
+
+  if pipe:
+    golden.options.flags.incl PipeOutput
+  if interactive:
+    golden.options.flags.incl Interactive
+  if Interactive in golden.options.flags and color:
+    golden.options.flags.incl ColorConsole
+
+  golden.output golden.compiler, "current compiler"
+
+  golden.options.honesty = honesty
 
   # capture interrupts
-  if gold.interactive:
+  if Interactive in golden.options.flags:
     proc sigInt() {.noconv.} =
       raise newException(BenchmarkusInterruptus, "")
     setControlCHook(sigInt)
@@ -121,7 +138,7 @@ proc golden(sources: seq[string]; args: string = "") =
   for filename in sources.items:
     if not filename.appearsBenchmarkable:
       quit "don't know how to benchmark `" & filename & "`"
-    discard waitfor gold.benchmark(filename, arguments)
+    discard waitfor golden.benchmark(filename, arguments)
 
 when isMainModule:
   # log only warnings in release
