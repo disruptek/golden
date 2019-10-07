@@ -4,7 +4,6 @@ import terminal
 import json
 
 import spec
-import running
 
 export terminal
 
@@ -13,8 +12,6 @@ when defined(dumpJson):
   const dumpJson = true
 else:
   const dumpJson = false
-
-const ISO8601 = initTimeFormat "yyyy-MM-dd\'T\'HH:mm:ss\'.\'fff\'Z\'"
 
 proc render*(d: Duration): string {.raises: [].} =
   ## cast a duration to a nice string
@@ -49,11 +46,8 @@ proc `$`*(invocation: InvocationInfo): string =
   result = $invocation.binary
   result &= invocation.arguments.join(" ")
 
-proc `$`*(running: RunningResult): string =
-  result = $running.wall
-
 proc toJson(entry: DateTime): JsonNode =
-  result = newJString entry.format(ISO8601)
+  result = newJString entry.format(ISO8601noTZ)
 
 method toJson(gold: GoldObject): JsonNode {.base.} =
   result = %* {

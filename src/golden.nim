@@ -19,24 +19,16 @@ when defined(git2SetVer):
 type
   BenchmarkusInterruptus = IOError
 
-  GoldenDatabase = ref object of GoldObject
-    path: string
-    db: DatabaseImpl
+  GoldenDatabase = DatabaseImpl
 
-proc close(database: GoldenDatabase) {.async.} =
-  ## close the database
-  waitfor database.db.close
-  when defined(git2SetVer):
-    git.shutdown()
+when false:
+  proc shutdown(golden: Golden) {.async.} =
+    when defined(git2SetVer):
+      git.shutdown()
 
 proc loadDatabaseForFile(filename: string): Future[GoldenDatabase] {.async.} =
   ## load a database using a filename
-  new result
-  result.init "db"
-  result.path = filename
-  result.db = await newDatabaseImpl(result.path)
-  when defined(git2SetVer):
-    git.init()
+  result = await newDatabaseImpl(filename)
 
 proc pathToCompilationTarget(filename: string): string =
   ## calculate the path of a source file's compiled binary output
@@ -44,6 +36,19 @@ proc pathToCompilationTarget(filename: string): string =
   var (head, tail) = filename.absolutePath.normalizedPath.splitPath
   tail.removeSuffix ".nim"
   result = head / tail
+
+proc sniffCompilerGitHash*(compiler: CompilerInfo): Future[string] {.async.} =
+  ## determine the git hash of the compiler binary if possible;
+  ## this should ideally compile a file to measure the version constants, too.
+  const pattern = "git hash: "
+  let invocation = await invoke(compiler.binary, @["--version"])
+  if invocation.okay:
+    for line in invocation.output.stdout.splitLines:
+      if line.startsWith(pattern):
+        let commit = line[pattern.len .. ^1]
+        if commit.len == 40:
+          result = commit
+          break
 
 proc compileFile*(filename: string): Future[CompilationInfo] {.async.} =
   ## compile a source file and yield details of the event
@@ -54,7 +59,7 @@ proc compileFile*(filename: string): Future[CompilationInfo] {.async.} =
     compiler = comp.compiler
 
   comp.source = newFileDetailWithInfo(filename)
-  comp.invocation = waitfor invoke(compiler.binary,
+  comp.invocation = await invoke(compiler.binary,
                                    @["c", "-d:danger", comp.source.path])
   if comp.invocation.okay:
     comp.binary = newFileDetailWithInfo(target)
@@ -63,26 +68,34 @@ proc compileFile*(filename: string): Future[CompilationInfo] {.async.} =
 proc benchmark*(golden: Golden; filename: string; args: seq[string] = @[]): Future[BenchmarkResult] {.async.} =
   ## benchmark a source file
   var
+    compiler: CompilerInfo
+    compilerHash: Future[string]
     bench = newBenchmarkResult()
     invocation: InvocationInfo
-    db = waitfor loadDatabaseForFile(filename)
+    db = await loadDatabaseForFile(filename)
+  var compilation = await compileFile(filename)
+  if compilation.okay:
+    compiler = compilation.compiler
+    bench.compilations.add compilation
+    compilerHash = compiler.sniffCompilerGitHash
+  invocation = compilation.invocation
+  var
+    outputs, fib = 0
+    clock = getTime()
+    secs: Duration
   defer:
-    waitfor db.close
+    clock = getTime()
+    await db.close
+    secs = getTime() - clock
+    when not defined(release) and not defined(danger):
+      golden.output "close took " & secs.render, fg = fgMagenta
   try:
-    let compilation = waitfor compileFile(filename)
-    if compilation.okay:
-      bench.compilations.add compilation
-    invocation = compilation.invocation
-    var
-      outputs, fib = 0
-      clock = getTime()
-      secs: Duration
     while invocation.okay:
       when defined(debugFdLeak):
         {.warning: "this build is for debugging fd leak".}
-        invocation = waitfor invoke("/usr/bin/lsof", "-p", getCurrentProcessId())
+        invocation = await invoke("/usr/bin/lsof", "-p", getCurrentProcessId())
         golden.output invocation.output.stdout
-      invocation = waitfor invoke(compilation.binary, args)
+      invocation = await invoke(compilation.binary, args)
       if invocation.okay:
         bench.invocations.add invocation
       else:
@@ -95,26 +108,37 @@ proc benchmark*(golden: Golden; filename: string; args: seq[string] = @[]): Futu
       outputs.inc
       fib = fibonacci(outputs)
       clock = getTime()
-      if bench.invocations.isEmpty and bench.compilations.isEmpty:
-        continue
       golden.output bench, "benchmark"
       if truthy:
         break
   except Exception as e:
-    golden.output bench, "benchmark"
+    if not bench.invocations.isEmpty or not bench.compilations.isEmpty:
+      golden.output bench, "benchmark"
     golden.output e.msg & "\ncleaning up..."
+  compiler.chash = await compilerHash
+  if DryRun notin golden.options.flags:
+    clock = getTime()
+    discard db.sync(compiler)
+    secs = getTime() - clock
+    when not defined(release) and not defined(danger):
+      golden.output "sync took " & secs.render, fg = fgMagenta
   result = bench
 
 proc golden(sources: seq[string]; args: string = "";
             color_forced: bool = false; pipe_json: bool = false;
             interactive_forced: bool = false; graphs_in_console: bool = false;
             prune_outliers: float = 0.01; classes_for_histogram: int = 10;
-            honesty: float = 0.01) =
+            honesty: float = 0.01; dry_run: bool = false) =
   ## Nim benchmarking tool;
   ## pass 1+ .nim source files to compile and benchmark
   var
     arguments: seq[string]
     golden = newGolden()
+
+  when defined(git2SetVer):
+    git.init()
+    defer:
+      git.shutdown()
 
   if pipe_json:
     golden.options.flags.incl PipeOutput
@@ -124,6 +148,8 @@ proc golden(sources: seq[string]; args: string = "";
     golden.options.flags.incl ColorConsole
   if graphs_in_console:
     golden.options.flags.incl ConsoleGraphs
+  if dry_run:
+    golden.options.flags.incl DryRun
 
   golden.options.honesty = honesty
   golden.options.prune = prune_outliers

@@ -14,15 +14,20 @@ export oids
 export md5
 export times
 
+const ISO8601noTZ* = initTimeFormat "yyyy-MM-dd\'T\'HH:mm:ss\'.\'fff"
+
 type
   GoldObject* = ref object of RootObj
     oid*: Oid
     name*: string
     description*: string
     entry*: DateTime
+    dirty*: bool
 
+  FileSize* = BiggestInt
   FileDetail* = ref object of GoldObject
-    digest*: MD5Digest
+    digest*: string
+    size*: FileSize
     info*: FileInfo
     path*: string
 
@@ -52,7 +57,7 @@ type
     major*: int
     minor*: int
     patch*: int
-    commit*: string
+    chash*: string
 
   CompilationInfo* = ref object of GoldObject
     compiler*: CompilerInfo
@@ -65,6 +70,7 @@ type
     PipeOutput
     ColorConsole
     ConsoleGraphs
+    DryRun
 
   GoldenOptions* = object
     flags*: set[GoldenFlag]
@@ -80,11 +86,13 @@ method init*(gold: GoldObject; text: string) {.base.} =
   gold.oid = genOid()
   gold.name = text
   gold.entry = now()
+  assert text.len <= 16
+  gold.dirty = true
 
-proc digestOfFileContents(path: string): MD5Digest =
+proc digestOfFileContents(path: string): string =
   assert path.fileExists
   let data = readFile(path)
-  result = data.toMD5
+  result = $data.toMD5
 
 proc commandLine*(invocation: InvocationInfo): string =
   ## compose the full commandLine for the given invocation
@@ -100,14 +108,16 @@ proc newRuntimeInfo*(): RuntimeInfo =
   new result
   result.init "runtime"
 
-proc newFileDetail*(path: string): FileDetail =
+proc newFileDetail*(path: string; size: FileSize; digest: string): FileDetail =
   new result
   result.init "file"
-  result.path = path.absolutePath.normalizedPath
-  result.digest = digestOfFileContents(path)
+  result.path = path
+  result.size = size
+  result.digest = digest
 
 proc newFileDetail*(path: string; info: FileInfo): FileDetail =
-  result = newFileDetail(path)
+  let normal = path.absolutePath.normalizedPath
+  result = newFileDetail(normal, info.size, digestOfFileContents(normal))
   result.info = info
 
 proc newFileDetailWithInfo*(path: string): FileDetail =
@@ -169,3 +179,8 @@ proc newCompilationInfo*(compiler: CompilerInfo = nil): CompilationInfo =
 proc fibonacci*(x: int): int =
   result = if x <= 2: 1
   else: fibonacci(x - 1) + fibonacci(x - 2)
+
+proc utcTzInfo(time: Time): ZonedTime =
+  result = ZonedTime(utcOffset: 0 * 3600, isDst: false, time: time)
+
+let tzUTC* = newTimezone("Somewhere/UTC", utcTzInfo, utcTzInfo)

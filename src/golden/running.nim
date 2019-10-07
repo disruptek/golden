@@ -25,6 +25,9 @@ type
     cpu*: RunningStat
     memory*: RunningStat
 
+proc `$`*(running: RunningResult): string =
+  result = $running.wall
+
 proc isEmpty[T](list: SinglyLinkedList[T]): bool =
   result = list.head == nil
 
@@ -109,6 +112,8 @@ proc crudeHistogram*(running: RunningResult; dims: ClassDimensions): seq[int] =
 
 proc prunePoint(stat: RunningStat; histogram: var seq[int]; dims: ClassDimensions; outlier: float): StatValue =
   ## find a good value above which we should prune outlier entries
+  if stat.n <= 3:
+    return
   var totalSum = sum(histogram).float
   while histogram[^1].float < totalSum * outlier:
     result = stat.min + (dims.size * histogram.high.StatValue)
