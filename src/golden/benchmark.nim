@@ -14,7 +14,6 @@ import running
 when defined(plotGraphs):
   import osproc
   import plot
-  import asyncdispatch
 
 type
   BenchmarkResult* = ref object of GoldObject
