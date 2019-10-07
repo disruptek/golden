@@ -178,9 +178,9 @@ method sync*(self: DatabaseImpl; compiler: var CompilerInfo): SyncResult {.base.
 
 proc storagePath(filename: string): string =
   ## make up a good path for the database file
-  assert not filename.startsWith "."
   var (head, tail) = filename.absolutePath.normalizedPath.splitPath
-  tail = "." & tail & ".golden-db"
+  if not filename.endsWith(".golden-db"):
+    tail = "." & tail & ".golden-db"
   result = head / tail
 
 proc newDatabaseImpl*(filename: string): Future[DatabaseImpl] {.async.} =

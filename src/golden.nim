@@ -72,23 +72,39 @@ proc benchmark*(golden: Golden; filename: string; args: seq[string] = @[]): Futu
     compilerHash: Future[string]
     bench = newBenchmarkResult()
     invocation: InvocationInfo
-    db = await loadDatabaseForFile(filename)
-  var compilation = await compileFile(filename)
-  if compilation.okay:
-    compiler = compilation.compiler
-    bench.compilations.add compilation
-    compilerHash = compiler.sniffCompilerGitHash
-  invocation = compilation.invocation
-  var
+    storage: string
     outputs, fib = 0
     clock = getTime()
     secs: Duration
+
+  # see if we need to hint at a specific storage site
+  if golden.options.storage != "":
+    storage = golden.options.storage
+  else:
+    storage = filename
+
+  # setup the db and prepare to close it down again
+  var
+    db = await loadDatabaseForFile(storage)
   defer:
     clock = getTime()
     await db.close
     secs = getTime() - clock
     when not defined(release) and not defined(danger):
       golden.output "close took " & secs.render, fg = fgMagenta
+
+  # do an initial compilation
+  var
+    compilation = await compileFile(filename)
+  if compilation.okay:
+    compiler = compilation.compiler
+    bench.compilations.add compilation
+    compilerHash = compiler.sniffCompilerGitHash
+  invocation = compilation.invocation
+
+  # now we loop on invocations of the compiled binary,
+  # if it was successfully built above
+  clock = getTime()
   try:
     while invocation.okay:
       when defined(debugFdLeak):
@@ -115,20 +131,25 @@ proc benchmark*(golden: Golden; filename: string; args: seq[string] = @[]): Futu
     if not bench.invocations.isEmpty or not bench.compilations.isEmpty:
       golden.output bench, "benchmark"
     golden.output e.msg & "\ncleaning up..."
+
+  # we should have the git commit hash of the compiler by now
   compiler.chash = await compilerHash
+
+  # here we will synchronize the benchmark to the database if needed
   if DryRun notin golden.options.flags:
     clock = getTime()
     discard db.sync(compiler)
     secs = getTime() - clock
     when not defined(release) and not defined(danger):
       golden.output "sync took " & secs.render, fg = fgMagenta
+
   result = bench
 
 proc golden(sources: seq[string]; args: string = "";
             color_forced: bool = false; pipe_json: bool = false;
             interactive_forced: bool = false; graphs_in_console: bool = false;
             prune_outliers: float = 0.01; classes_for_histogram: int = 10;
-            honesty: float = 0.01; dry_run: bool = false) =
+            honesty: float = 0.01; dry_run: bool = false; storage: string = "") =
   ## Nim benchmarking tool;
   ## pass 1+ .nim source files to compile and benchmark
   var
@@ -154,6 +175,7 @@ proc golden(sources: seq[string]; args: string = "";
   golden.options.honesty = honesty
   golden.options.prune = prune_outliers
   golden.options.classes = classes_for_histogram
+  golden.options.storage = storage
 
   golden.output golden.compiler, "current compiler"
 

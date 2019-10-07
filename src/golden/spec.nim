@@ -77,6 +77,7 @@ type
     honesty*: float
     prune*: float
     classes*: int
+    storage*: string
 
   Golden* = ref object of GoldObject
     compiler*: CompilerInfo
