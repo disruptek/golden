@@ -11,10 +11,12 @@ $ nimble install golden
 
 ## Usage
 ```
-$ golden somesource.nim
-# compiles your code with -d:danger and runs it many times
-# it will dump runtime statistics with fibonacci frequency
-# ctrl-c when you've had enough
+$ golden --honesty=0 somesource.nim
+# Compile your code with -d:danger and run it many times.
+# It will dump runtime statistics with fibonacci frequency.
+# It will continue to run the benchmark until the stddev is
+# within `honesty` percent of mean runtime.
+# Ctrl-C when you've had enough.
 # ...
 bench:5d9652e4615eca6d3e35c38a entry 2019-10-03T15:58:28-04:00
 /some/path/to/somesource
