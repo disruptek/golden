@@ -106,8 +106,9 @@ proc benchmark*(golden: Golden; filename: string; args: seq[string] = @[]): Futu
   result = bench
 
 proc golden(sources: seq[string]; args: string = "";
-            color: bool = false; pipe: bool = false;
-            interactive: bool = false;
+            color_forced: bool = false; pipe_json: bool = false;
+            interactive_forced: bool = false; graphs_in_console: bool = false;
+            prune_outliers: float = 0.01; classes_for_histogram: int = 10;
             honesty: float = 0.01) =
   ## Nim benchmarking tool;
   ## pass 1+ .nim source files to compile and benchmark
@@ -115,16 +116,20 @@ proc golden(sources: seq[string]; args: string = "";
     arguments: seq[string]
     golden = newGolden()
 
-  if pipe:
+  if pipe_json:
     golden.options.flags.incl PipeOutput
-  if interactive:
+  if interactive_forced:
     golden.options.flags.incl Interactive
-  if Interactive in golden.options.flags and color:
+  if Interactive in golden.options.flags and color_forced:
     golden.options.flags.incl ColorConsole
-
-  golden.output golden.compiler, "current compiler"
+  if graphs_in_console:
+    golden.options.flags.incl ConsoleGraphs
 
   golden.options.honesty = honesty
+  golden.options.prune = prune_outliers
+  golden.options.classes = classes_for_histogram
+
+  golden.output golden.compiler, "current compiler"
 
   # capture interrupts
   if Interactive in golden.options.flags:

@@ -14,7 +14,6 @@ import running
 when defined(plotGraphs):
   import osproc
   import plot
-  import invoke
   import asyncdispatch
 
 type
@@ -51,14 +50,12 @@ proc output*(golden: Golden; benchmark: BenchmarkResult; desc: string = "") =
   let since = getTime() - benchmark.entry.toTime
   golden.output desc & " after " & $since.inSeconds & "s"
   golden.output $benchmark
-  when not defined(plotGraphs):
-    return
-  else:
-    while true:
+  when defined(plotGraphs):
+    while ConsoleGraphs in golden.options.flags:
       var
-        dims = benchmark.invocations.wall.makeDimensions(50)
+        dims = benchmark.invocations.wall.makeDimensions(golden.options.classes)
         histo = benchmark.invocations.crudeHistogram(dims)
-      if benchmark.invocations.maybePrune(histo, dims, 0.01):
+      if benchmark.invocations.maybePrune(histo, dims, golden.options.prune):
         continue
       golden.output $histo
       # hangs if histo.len == 1 due to max-min == 0

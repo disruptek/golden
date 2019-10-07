@@ -64,10 +64,13 @@ type
     Interactive
     PipeOutput
     ColorConsole
+    ConsoleGraphs
 
   GoldenOptions* = object
     flags*: set[GoldenFlag]
     honesty*: float
+    prune*: float
+    classes*: int
 
   Golden* = ref object of GoldObject
     compiler*: CompilerInfo

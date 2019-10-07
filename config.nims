@@ -16,4 +16,4 @@ switch("define", "git2DL")
 # bad idea
 #define:git2Static
 
-#switch("define", "plotGraphs")
+switch("define", "plotGraphs")
