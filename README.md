@@ -11,11 +11,11 @@ $ nimble install golden
 
 ## Usage
 ```
-$ golden --honesty=0 somesource.nim
+$ golden --truth=0.01 somesource.nim
 # Compile your code with -d:danger and run it many times.
 # It will dump runtime statistics with fibonacci frequency.
 # It will continue to run the benchmark until the stddev is
-# within `honesty` percent of mean runtime.
+# within `truth` (think percentage) of mean runtime.
 # Ctrl-C when you've had enough.
 # ...
 bench:5d9652e4615eca6d3e35c38a entry 2019-10-03T15:58:28-04:00
@@ -60,39 +60,17 @@ compilation(s) -- RunningStat(
 )
 ```
 
-## Theory of Operation
+## Command Line Options
 
-### Measure something, anything
-
-We don't currently measure anything, so the bar is pretty low, here.
-
-### Tell me something true, and as cheaply as possible
-
-Provide answers commensurate with the complexity of the request.
-
-### The more money I put in, the more truth I want
-
-You pour; I'll say "when".
-
-### The more I spend, the more valuable your memory
-
-Truth is hardwon, and probably moreso than memory.
-
-### Be useful to humans
-
-Your user is interactive.
-
-### Be useful to code
-
-Oh, let them eat cake!
-
-### I don't want to know how the sausage is made
-
-Nothing good ever came of it.
-
-### But I might want to provide some of the ingredients
-
-Sure, sure, we'll use 'em.
+ - `truth` a float percentage indicating how much jitter you'll accept
+ - `storage` the path to a database file you wish to use; must end in `.golden-db`
+ - `interactive-forced` assume output friendly to humans
+ - `json-output` assume output friendly to machines _(work in progress)_
+ - `color-forced` enable color output when not in `interactive` mode
+ - `graphs-in-console` periodically produce graphs (PNG) and display them in a Kitty console
+ - `prune-outliers` throw out this percentage of aberrant invocations with long runtime in order to clean up the histogram
+ - `dry-run` don't write any results to the database
+ - `histogram-classes` the number of points in the histogram
 
 ## License
 MIT

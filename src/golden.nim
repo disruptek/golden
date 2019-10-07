@@ -146,10 +146,10 @@ proc benchmark*(golden: Golden; filename: string; args: seq[string] = @[]): Futu
   result = bench
 
 proc golden(sources: seq[string]; args: string = "";
-            color_forced: bool = false; pipe_json: bool = false;
+            color_forced: bool = false; json_output: bool = false;
             interactive_forced: bool = false; graphs_in_console: bool = false;
-            prune_outliers: float = 0.01; classes_for_histogram: int = 10;
-            honesty: float = 0.01; dry_run: bool = false; storage: string = "") =
+            prune_outliers: float = 0.0; histogram_classes: int = 10;
+            truth: float = 0.01; dry_run: bool = false; storage_path: string = "") =
   ## Nim benchmarking tool;
   ## pass 1+ .nim source files to compile and benchmark
   var
@@ -161,7 +161,7 @@ proc golden(sources: seq[string]; args: string = "";
     defer:
       git.shutdown()
 
-  if pipe_json:
+  if json_output:
     golden.options.flags.incl PipeOutput
   if interactive_forced:
     golden.options.flags.incl Interactive
@@ -172,10 +172,10 @@ proc golden(sources: seq[string]; args: string = "";
   if dry_run:
     golden.options.flags.incl DryRun
 
-  golden.options.honesty = honesty
+  golden.options.honesty = truth
   golden.options.prune = prune_outliers
-  golden.options.classes = classes_for_histogram
-  golden.options.storage = storage
+  golden.options.classes = histogram_classes
+  golden.options.storage = storage_path
 
   golden.output golden.compiler, "current compiler"
 
