@@ -18,6 +18,10 @@ proc len*[T](list: SinglyLinkedList[T]): int =
     result.inc
     head = head.next
 
+proc first*[T: ref](list: SinglyLinkedList[T]): T =
+  if list.head != nil:
+    result = list.head.value
+
 proc removeNext*(head: var SinglyLinkedNode) =
   ## remove the next node in a list
   if head != nil:
