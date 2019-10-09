@@ -30,10 +30,11 @@ proc `$`*(bench: BenchmarkResult): string =
   if bench.invocations.len > 0:
     let invocation = bench.invocations.first
     result &= "\n" & $invocation
-  if bench.compilations.len > 0:
-    result &= "\ncompile: " & $bench.compilations
-  if bench.invocations.len > 0:
-    result &= "\n invoke: " & $bench.invocations
+  if bench.invocations.len == 0:
+    if bench.compilations.len > 0:
+      result &= "\ncompilations:\n" & $bench.compilations
+  else:
+    result &= "\ninvocations:\n" & $bench.invocations
 
 proc newBenchmarkResult*(): BenchmarkResult =
   new result
@@ -147,9 +148,9 @@ proc benchmark*(golden: Golden; bench: BenchmarkResult; filename: string;
       outputs.inc
       fib = fibonacci(outputs)
       clock = getTime()
-      golden.output bench, "benchmark"
       if truthy or not invocation.okay:
         break
+      golden.output bench, "benchmark"
   except BenchmarkusInterruptus as e:
     termination = "interrupted benchmark"
     result = bench

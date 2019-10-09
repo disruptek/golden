@@ -7,7 +7,9 @@ import stats
 import lists
 import math
 import strformat
+import strutils
 
+import terminaltables
 import msgpack4nim
 
 import spec
@@ -31,8 +33,20 @@ type
     memory*: RunningStat
 
 proc `$`*(running: RunningResult): string =
-  let stat = running.wall
-  result = fmt"{stat.n} min: {stat.min} max: {stat.max} mean: {stat.mean} stddev: {stat.standardDeviation}"
+  let
+    stat = running.wall
+  var
+    row: seq[string]
+    table = newUnicodeTable()
+  table.setHeaders @["#", "Min", "Max", "Mean", "StdDev"]
+  table.separateRows = false
+  row.add fmt"{stat.n:>6d}"
+  row.add fmt"{stat.min:>0.6f}"
+  row.add fmt"{stat.max:>0.6f}"
+  row.add fmt"{stat.mean:>0.6f}"
+  row.add fmt"{stat.standardDeviation:>0.6f}"
+  table.addRow row
+  result = table.render.strip
 
 proc len*(running: RunningResult): int =
   result = running.wall.n

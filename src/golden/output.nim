@@ -78,7 +78,7 @@ proc jsonOutput(golden: Golden): bool =
   let flags = golden.options.flags
   result = dumpJson or PipeOutput in flags or Interactive notin flags
 
-proc output*(golden: Golden; content: string; style: set[Style] = {}; fg: ForegroundColor = fgDefault; bg: BackgroundColor = bgDefault) =
+proc output*(golden: Golden; content: string; style: set[terminal.Style] = {}; fg: ForegroundColor = fgDefault; bg: BackgroundColor = bgDefault) =
   let
     flags = golden.options.flags
     fh = stdmsg()
