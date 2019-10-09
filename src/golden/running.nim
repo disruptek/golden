@@ -6,11 +6,13 @@ stuff related to the RunningResult and statistics in a broad sense
 import stats
 import lists
 import math
+import strformat
 
 import msgpack4nim
 
 import spec
 import linkedlists
+import compilation
 
 export stats
 
@@ -29,7 +31,8 @@ type
     memory*: RunningStat
 
 proc `$`*(running: RunningResult): string =
-  result = $running.wall
+  let stat = running.wall
+  result = fmt"{stat.n} min: {stat.min} max: {stat.max} mean: {stat.mean} stddev: {stat.standardDeviation}"
 
 proc len*(running: RunningResult): int =
   result = running.wall.n
