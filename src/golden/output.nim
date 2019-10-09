@@ -37,7 +37,7 @@ proc `$`*(compiler: CompilerInfo): string =
   result = "Nim " & compiler.version
   if digest != "00000000000000000000000000000000":
     result &= " digest " & digest
-  result &= " built " & $compiler.binary.info.lastWriteTime
+  result &= " built " & $compiler.binary.mtime
 
 proc `$`*(runtime: RuntimeInfo): string =
   result = runtime.wall.render

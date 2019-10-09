@@ -13,6 +13,8 @@ import db_sqlite
 
 import fsm
 import spec
+import benchmark
+import running
 
 const ISO8601forDB* = initTimeFormat "yyyy-MM-dd\'T\'HH:mm:ss\'.\'fff"
 
@@ -44,6 +46,10 @@ type
   Event = enum
     Upgrade
     Downgrade
+
+proc parseDuration(text: string): Duration =
+  let f = text.parseFloat
+  result = initDuration(nanoseconds = int64(billion * f))
 
 proc getModelVersion(self: DatabaseImpl): ModelVersion =
   result = v0
@@ -97,6 +103,35 @@ proc upgradeDatabase*(self: DatabaseImpl) =
         chash char(40)
       )
     """
+    self.db.exec sql"""
+      create table CompilationInfo (
+        oid char(24),
+        entry datetime,
+        source char(24),
+        compiler char(24),
+        binary char(24),
+        invocation char(24),
+        runtime char(24)
+      )
+    """
+    self.db.exec sql"""
+      create table InvocationInfo (
+        oid char(24),
+        entry datetime,
+        binary char(24),
+        runtime char(24)
+        arguments varchar(2048)
+      )
+    """
+    self.db.exec sql"""
+      create table RuntimeInfo (
+        oid char(24),
+        entry datetime,
+        wall real(8),
+        runtime char(24)
+        arguments varchar(2048)
+      )
+    """
     self.setModelVersion(v1)
 
   while currently != ModelVersion.high:
@@ -117,6 +152,7 @@ template loadTimestamp(gold: typed; datetime: string) =
 method sync(self: DatabaseImpl; detail: var FileDetail): SyncResult {.base.} =
   if not detail.dirty:
     return SyncOkay
+  detail.dirty = false
 
   var row: Row
   row = self.db.getRow(sql"""select oid, entry, digest
@@ -143,13 +179,12 @@ method sync*(self: DatabaseImpl; compiler: var CompilerInfo): SyncResult {.base.
   discard self.sync(compiler.binary)
   if not compiler.dirty:
     return SyncOkay
+  compiler.dirty = false
 
   var row: Row
   row = self.db.getRow(sql"""
     select oid, entry, major, minor, patch, chash
-    from CompilerInfo
-    where binary = ?
-  """, compiler.binary.oid)
+    from CompilerInfo where binary = ?""", compiler.binary.oid)
 
   if row[0] != "":
     result = SyncRead
@@ -175,6 +210,66 @@ method sync*(self: DatabaseImpl; compiler: var CompilerInfo): SyncResult {.base.
       $compiler.minor,
       $compiler.patch,
       $compiler.chash
+
+method sync*(self: DatabaseImpl; invocation: var InvocationInfo): SyncResult {.base.} =
+  ## binary, runningstats
+  discard self.sync(invocation.binary)
+  if not invocation.dirty:
+    return SyncOkay
+  invocation.dirty = false
+
+  var row: Row
+  row = self.db.getRow(sql"""
+    select oid, entry, arguments, wall
+    from InvocationInfo where oid = ?""", $invocation.oid)
+
+  if row[0] != "":
+    result = SyncRead
+    invocation.oid = row[0].parseOid
+    invocation.loadTimestamp(row[1])
+    invocation.arguments = row[2].split(" ")
+    invocation.runtime.wall = row[3].parseDuration
+  else:
+    result = SyncWrite
+    self.db.exec sql"""
+      insert into InvocationInfo
+        (oid, entry, arguments, wall)
+      values
+        (?,   ?,     ?,         ?)
+    """,
+      $invocation.oid,
+      invocation.renderTimestamp,
+      invocation.arguments.join(" "),
+      $invocation.runtime.wall
+
+method sync*(self: DatabaseImpl; compilation: var CompilationInfo): SyncResult {.base.} =
+  if not compilation.dirty:
+    return SyncOkay
+  compilation.dirty = false
+
+  discard self.sync(compilation.compiler)
+  discard self.sync(compilation.source)
+  discard self.sync(compilation.binary)
+  discard self.sync(compilation.invocation)
+
+method sync*(self: DatabaseImpl; running: var RunningResult): SyncResult {.base.} =
+  if running.len == 0:
+    return
+  if not running.dirty:
+    return SyncOkay
+  running.dirty = false
+
+  for thing in running.mitems:
+    discard self.sync(thing)
+
+method sync*(self: DatabaseImpl; benchmark: var BenchmarkResult): SyncResult {.base.} =
+  discard self.sync(benchmark.binary)
+  if not benchmark.dirty:
+    return SyncOkay
+  benchmark.dirty = false
+
+  discard self.sync(benchmark.compilations)
+  discard self.sync(benchmark.invocations)
 
 proc storagePath(filename: string): string =
   ## make up a good path for the database file

@@ -7,7 +7,10 @@ import stats
 import lists
 import math
 
+import msgpack4nim
+
 import spec
+import linkedlists
 
 export stats
 
@@ -27,24 +30,6 @@ type
 
 proc `$`*(running: RunningResult): string =
   result = $running.wall
-
-proc isEmpty[T](list: SinglyLinkedList[T]): bool =
-  result = list.head == nil
-
-proc len[T](list: SinglyLinkedList[T]): int =
-  var head = list.head
-  while head != nil:
-    result.inc
-    head = head.next
-
-proc removeNext*(head: var SinglyLinkedNode) =
-  ## remove the next node in a list
-  if head != nil:
-    if head.next != nil:
-      if head.next.next != nil:
-        head.next = head.next.next
-      else:
-        head.next = nil
 
 proc len*(running: RunningResult): int =
   result = running.wall.n
@@ -143,6 +128,14 @@ proc maybePrune*(running: var RunningResult; histogram: var seq[int];
   # let the world know that we probably did something
   result = true
 
+iterator mitems*[T](running: RunningResult[T]): var T =
+  for item in running.list.mitems:
+    yield item
+
+iterator items*[T](running: RunningResult[T]): T =
+  for item in running.list.items:
+    yield item
+
 proc add*[T: CompilationInfo](running: RunningResult[T]; value: T) =
   ## for stats, pull out the invocation duration from compilation info
   running.list.append value
@@ -159,3 +152,27 @@ proc newRunningResult*[T](): RunningResult[T] =
   new result
   result.init "running"
   result.list = initSinglyLinkedList[T]()
+
+proc pack_type*[ByteStream](s: ByteStream; x: RunningResult) =
+  s.pack_type(x.oid)
+  s.pack_type(x.entry)
+  s.pack_type(x.list)
+  s.pack_type(x.wall)
+
+proc unpack_type*[ByteStream](s: ByteStream; x: var RunningResult) =
+  s.unpack_type(x.oid)
+  s.unpack_type(x.entry)
+  s.unpack_type(x.list)
+  s.unpack_type(x.wall)
+
+proc pack_type*[ByteStream](s: ByteStream; x: RunningResult[CompilationInfo]) =
+  s.pack_type(x.oid)
+  s.pack_type(x.entry)
+  s.pack_type(x.list)
+  s.pack_type(x.wall)
+
+proc unpack_type*[ByteStream](s: ByteStream; x: var RunningResult[CompilationInfo]) =
+  s.unpack_type(x.oid)
+  s.unpack_type(x.entry)
+  s.unpack_type(x.list)
+  s.unpack_type(x.wall)

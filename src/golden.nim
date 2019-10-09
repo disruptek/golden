@@ -8,18 +8,17 @@ import cligen
 
 import golden/spec
 import golden/invoke
-import golden/db
 import golden/output
 import golden/benchmark
 import golden/running
+
+import golden/lm as dbImpl
 
 when defined(git2SetVer):
   import golden/git as git
 
 type
   BenchmarkusInterruptus = IOError
-
-  GoldenDatabase = DatabaseImpl
 
 when false:
   proc shutdown(golden: Golden) {.async.} =
@@ -28,7 +27,7 @@ when false:
 
 proc loadDatabaseForFile(filename: string): Future[GoldenDatabase] {.async.} =
   ## load a database using a filename
-  result = await newDatabaseImpl(filename)
+  result = await dbImpl.open(filename)
 
 proc pathToCompilationTarget(filename: string): string =
   ## calculate the path of a source file's compiled binary output
@@ -98,6 +97,13 @@ proc benchmark*(golden: Golden; filename: string; args: seq[string] = @[]): Futu
     compilation = await compileFile(filename)
   if compilation.okay:
     compiler = compilation.compiler
+    when not defined(release) and not defined(danger):
+      echo "compiler size", compiler.binary.size
+      db.write(compiler.binary)
+      compiler.binary.size = 0
+      echo "compiler size", compiler.binary.size
+      db.read(compiler.binary)
+      echo "compiler size", compiler.binary.size
     bench.compilations.add compilation
     compilerHash = compiler.sniffCompilerGitHash
   invocation = compilation.invocation
@@ -127,10 +133,13 @@ proc benchmark*(golden: Golden; filename: string; args: seq[string] = @[]): Futu
       golden.output bench, "benchmark"
       if truthy:
         break
+  except BenchmarkusInterruptus:
+    if not bench.invocations.isEmpty or not bench.compilations.isEmpty:
+      golden.output bench, "premature termination"
   except Exception as e:
     if not bench.invocations.isEmpty or not bench.compilations.isEmpty:
-      golden.output bench, "benchmark"
-    golden.output e.msg & "\ncleaning up..."
+      golden.output bench, "premature termination"
+    golden.output e.msg
 
   # we should have the git commit hash of the compiler by now
   compiler.chash = await compilerHash
@@ -138,7 +147,6 @@ proc benchmark*(golden: Golden; filename: string; args: seq[string] = @[]): Futu
   # here we will synchronize the benchmark to the database if needed
   if DryRun notin golden.options.flags:
     clock = getTime()
-    discard db.sync(compiler)
     secs = getTime() - clock
     when not defined(release) and not defined(danger):
       golden.output "sync took " & secs.render, fg = fgMagenta

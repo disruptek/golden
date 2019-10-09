@@ -40,7 +40,7 @@ proc appearsBenchmarkable*(path: string): bool =
   var detail = newFileDetailWithInfo(path)
   if not path.endsWith(".nim"):
     return false
-  if detail.info.kind notin {pcFile, pcLinkToFile}:
+  if detail.kind notin {pcFile, pcLinkToFile}:
     return false
   result = true
 

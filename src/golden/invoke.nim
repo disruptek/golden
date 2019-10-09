@@ -39,8 +39,8 @@ proc monitor(process: Process; invocation: var InvocationInfo) =
   # monitor whether the process has finished or produced output
   when defined(useProcessSignal):
     let signal = watcher.registerProcess(process.processId, Finished)
-  watcher.registerHandle(process.outputHandle.int, {Read}, Output)
-  watcher.registerHandle(process.errorHandle.int, {Read}, Errors)
+  watcher.registerHandle(process.outputHandle.int, {Event.Read}, Output)
+  watcher.registerHandle(process.errorHandle.int, {Event.Read}, Errors)
 
   block running:
     try:

@@ -10,13 +10,31 @@ import oids
 import strutils
 import terminal
 
+import msgpack4nim
+
 export oids
 export md5
 export times
 
-const ISO8601noTZ* = initTimeFormat "yyyy-MM-dd\'T\'HH:mm:ss\'.\'fff"
+const
+  ISO8601noTZ* = initTimeFormat "yyyy-MM-dd\'T\'HH:mm:ss\'.\'fff"
+  billion* = 1_000_000_000
 
 type
+  Sync* {.pure.} = enum
+    Okay
+    Read
+    Write
+    Error
+
+  ModelVersion* = enum
+    v0 = "(none)"
+    v1 = "dragons; really alpha"
+
+  ModelEvent* = enum
+    Upgrade
+    Downgrade
+
   GoldObject* = ref object of RootObj
     oid*: Oid
     name*: string
@@ -28,8 +46,9 @@ type
   FileDetail* = ref object of GoldObject
     digest*: string
     size*: FileSize
-    info*: FileInfo
     path*: string
+    mtime*: Time
+    kind*: PathComponent
 
   WallDuration* = Duration
   CpuDuration* = float64
@@ -119,7 +138,8 @@ proc newFileDetail*(path: string; size: FileSize; digest: string): FileDetail =
 proc newFileDetail*(path: string; info: FileInfo): FileDetail =
   let normal = path.absolutePath.normalizedPath
   result = newFileDetail(normal, info.size, digestOfFileContents(normal))
-  result.info = info
+  result.mtime = info.lastWriteTime
+  result.kind = info.kind
 
 proc newFileDetailWithInfo*(path: string): FileDetail =
   assert path.fileExists
@@ -181,7 +201,78 @@ proc fibonacci*(x: int): int =
   result = if x <= 2: 1
   else: fibonacci(x - 1) + fibonacci(x - 2)
 
-proc utcTzInfo(time: Time): ZonedTime =
-  result = ZonedTime(utcOffset: 0 * 3600, isDst: false, time: time)
+#[
+proc pack_type*[ByteStream](s: ByteStream; x: Oid) =
+  s.pack($x)
 
-let tzUTC* = newTimezone("Somewhere/UTC", utcTzInfo, utcTzInfo)
+proc unpack_type*[ByteStream](s: ByteStream; x: var Oid) =
+  var oid: cstring
+  s.unpack_type(oid)
+  x = parseOid(oid)
+
+proc pack_type*[ByteStream](s: ByteStream; x: FileDetail) =
+  s.pack(x.oid)
+  s.pack(x.entry)
+  s.pack(x.digest)
+  s.pack(x.size)
+  s.pack(x.path)
+  s.pack(x.mtime)
+  s.pack(x.kind)
+
+proc unpack_type*[ByteStream](s: ByteStream; x: var FileDetail) =
+  s.unpack_type(x.oid)
+  s.unpack_type(x.entry)
+  s.unpack_type(x.digest)
+  s.unpack_type(x.size)
+  s.unpack_type(x.path)
+  s.unpack_type(x.kind)
+  s.unpack_type(x.mtime)
+]#
+
+#[
+proc pack_type*[ByteStream](s: ByteStream; x: CompilationInfo) =
+  s.pack(x.oid)
+  s.pack(x.entry)
+  s.pack(x.source)
+  s.pack(x.compiler)
+  s.pack(x.binary)
+  s.pack(x.invocation)
+  when declared(x.runtime):
+    s.pack(x.runtime)
+  else:
+    s.pack(x.invocation.runtime)
+
+proc unpack_type*[ByteStream](s: ByteStream; x: var CompilationInfo) =
+  s.unpack_type(x.oid)
+  s.unpack_type(x.entry)
+  s.unpack_type(x.source)
+  s.unpack_type(x.compiler)
+  s.unpack_type(x.binary)
+  s.unpack_type(x.invocation)
+  when declared(x.runtime):
+    s.unpack_type(x.runtime)
+  else:
+    s.unpack_type(x.invocation.runtime)
+
+proc pack_type*[ByteStream](s: ByteStream; x: InvocationInfo) =
+  s.pack(x.oid)
+  s.pack(x.entry)
+  s.pack(x.arguments)
+  s.pack(x.binary)
+  s.pack(x.invocation)
+  when declared(x.runtime):
+    s.pack(x.runtime)
+  else:
+    s.pack(x.invocation.runtime)
+
+proc unpack_type*[ByteStream](s: ByteStream; x: var InvocationInfo) =
+  s.unpack_type(x.oid)
+  s.unpack_type(x.entry)
+  s.unpack_type(x.compiler)
+  s.unpack_type(x.binary)
+  s.unpack_type(x.invocation)
+  when declared(x.runtime):
+    s.unpack_type(x.runtime)
+  else:
+    s.unpack_type(x.invocation.runtime)
+]#
