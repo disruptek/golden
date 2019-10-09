@@ -17,7 +17,7 @@ export md5
 export times
 
 const
-  ISO8601noTZ* = initTimeFormat "yyyy-MM-dd\'T\'HH:mm:ss\'.\'fff"
+  ISO8601noTZ* = initTimeFormat "yyyy-MM-dd\'T\'HH:mm:ss\'.\'fff\'Z\'"
   billion* = 1_000_000_000
 
 type
@@ -201,12 +201,52 @@ proc fibonacci*(x: int): int =
   result = if x <= 2: 1
   else: fibonacci(x - 1) + fibonacci(x - 2)
 
-#[
+proc pack_type*[ByteStream](s: ByteStream; x: DateTime) =
+  s.pack(x.inZone(local()).format(ISO8601noTZ))
+
+proc unpack_type*[ByteStream](s: ByteStream; x: var DateTime) =
+  var datetime: string
+  s.unpack_type(datetime)
+  x = datetime.parse(ISO8601noTZ).inZone(local())
+
+proc pack_type*[ByteStream](s: ByteStream; x: Timezone) =
+  s.pack(x.name)
+
+proc unpack_type*[ByteStream](s: ByteStream; x: var Timezone) =
+  s.unpack_type(x.name)
+  case x.name:
+  of "LOCAL":
+    x = local()
+  of "UTC":
+    x = utc()
+  else:
+    raise newException(Defect, "dunno how to unpack timezone `" & x.name & "`")
+
+proc pack_type*[ByteStream](s: ByteStream; x: NanosecondRange) =
+  s.pack(cast[int32](x))
+
+proc unpack_type*[ByteStream](s: ByteStream; x: var NanosecondRange) =
+  var y: int32
+  s.unpack_type(y)
+  x = y
+
+proc pack_type*[ByteStream](s: ByteStream; x: Time) =
+  s.pack(x.toUnix)
+  s.pack(x.nanosecond)
+
+proc unpack_type*[ByteStream](s: ByteStream; x: var Time) =
+  var
+    unix: int64
+    nanos: NanosecondRange
+  s.unpack_type(unix)
+  s.unpack_type(nanos)
+  x = initTime(unix, nanos)
+
 proc pack_type*[ByteStream](s: ByteStream; x: Oid) =
   s.pack($x)
 
 proc unpack_type*[ByteStream](s: ByteStream; x: var Oid) =
-  var oid: cstring
+  var oid: string
   s.unpack_type(oid)
   x = parseOid(oid)
 
@@ -216,8 +256,8 @@ proc pack_type*[ByteStream](s: ByteStream; x: FileDetail) =
   s.pack(x.digest)
   s.pack(x.size)
   s.pack(x.path)
-  s.pack(x.mtime)
   s.pack(x.kind)
+  s.pack(x.mtime)
 
 proc unpack_type*[ByteStream](s: ByteStream; x: var FileDetail) =
   s.unpack_type(x.oid)
@@ -227,7 +267,6 @@ proc unpack_type*[ByteStream](s: ByteStream; x: var FileDetail) =
   s.unpack_type(x.path)
   s.unpack_type(x.kind)
   s.unpack_type(x.mtime)
-]#
 
 #[
 proc pack_type*[ByteStream](s: ByteStream; x: CompilationInfo) =

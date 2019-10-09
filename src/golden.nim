@@ -97,13 +97,6 @@ proc benchmark*(golden: Golden; filename: string; args: seq[string] = @[]): Futu
     compilation = await compileFile(filename)
   if compilation.okay:
     compiler = compilation.compiler
-    when not defined(release) and not defined(danger):
-      echo "compiler size", compiler.binary.size
-      db.write(compiler.binary)
-      compiler.binary.size = 0
-      echo "compiler size", compiler.binary.size
-      db.read(compiler.binary)
-      echo "compiler size", compiler.binary.size
     bench.compilations.add compilation
     compilerHash = compiler.sniffCompilerGitHash
   invocation = compilation.invocation

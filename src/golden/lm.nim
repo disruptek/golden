@@ -79,35 +79,10 @@ when false:
     let f = text.parseFloat
     result = initDuration(nanoseconds = int64(billion * f))
 
-  method renderTimestamp(gold: GoldObject): string {.base.} =
-    ## turn a datetime into a string for the db
-    gold.entry.inZone(utc()).format(ISO8601forDB)
+  proc utcTzInfo(time: Time): ZonedTime =
+    result = ZonedTime(utcOffset: 0 * 3600, isDst: false, time: time)
 
-  template loadTimestamp(gold: typed; datetime: string) =
-    ## parse a db timestamp into a datetime
-    gold.entry = datetime.parse(ISO8601forDB).inZone(local())
-
-#proc pack_type*[ByteStream](s: ByteStream; x: GoldObject) =
-#  s.pack(x.oid)
-#  s.pack(x.entry)
-
-proc utcTzInfo(time: Time): ZonedTime =
-  result = ZonedTime(utcOffset: 0 * 3600, isDst: false, time: time)
-
-let tzUTC* = newTimezone("Somewhere/UTC", utcTzInfo, utcTzInfo)
-
-proc pack_type*[ByteStream](s: ByteStream; x: Timezone) =
-  s.pack(x.name)
-
-proc unpack_type*[ByteStream](s: ByteStream; x: var Timezone) =
-  s.unpack_type(x.name)
-  case x.name:
-  of "LOCAL":
-    x = local()
-  of "UTC":
-    x = utc()
-  else:
-    raise newException(Defect, "dunno how to unpack timezone `" & x.name & "`")
+  let tzUTC* = newTimezone("Somewhere/UTC", utcTzInfo, utcTzInfo)
 
 proc fetchViaOid(transaction: LMDBTxn;
                    handle: Dbi; oid: Oid): Option[string] =
@@ -124,7 +99,6 @@ proc fetchViaOid(self: GoldenDatabase; oid: Oid): Option[string] =
     handle = transaction.dbiOpen($ord(self.version), CREATE)
   result = fetchViaOid(transaction, handle, oid)
 
-#template write*(self: GoldenDatabase; gold: typed) =
 proc read*[T: Storable](self: GoldenDatabase; gold: var T) =
   if not gold.dirty:
     return
@@ -136,6 +110,7 @@ proc read*[T: Storable](self: GoldenDatabase; gold: var T) =
   try:
     let existing = transaction.get(handle, $gold.oid)
     unpack(existing, gold)
+    gold.dirty = false
   except Exception as e:
     stdmsg().writeLine "read: " & e.msg
 
