@@ -116,12 +116,13 @@ proc appearsBenchmarkable*(path: string): bool =
     stdmsg().writeLine(path & ": " & e.msg)
     return false
 
-proc benchmark*(golden: Golden; bench: BenchmarkResult; filename: string;
+proc benchmark*(golden: Golden; filename: string;
                 args: seq[string]): Future[BenchmarkResult] {.async.} =
   ## benchmark an arbitrary executable
   let
     target = newFileDetailWithInfo(filename)
   var
+    bench = newBenchmarkResult()
     invocation: InvocationInfo
     outputs, fib = 0
     clock = getTime()
@@ -135,7 +136,7 @@ proc benchmark*(golden: Golden; bench: BenchmarkResult; filename: string;
         {.warning: "this build is for debugging fd leak".}
         invocation = await invoke("/usr/bin/lsof", "-p", getCurrentProcessId())
         golden.output invocation.output.stdout
-      invocation = await invoke(target, golden.options.arguments)
+      invocation = await invoke(target, args)
       if invocation.okay:
         bench.invocations.add invocation
       else:
@@ -164,31 +165,48 @@ proc benchmark*(golden: Golden; bench: BenchmarkResult; filename: string;
       golden.output bench, termination
   result = bench
 
+proc benchmarkCompiler*(golden: Golden;
+                        filename: string): Future[BenchmarkResult] {.async.} =
+  assert CompileOnly in golden.options.flags
+  var
+    compilation = prepareCompilation(filename)
+    compiler = compilation.compiler
+    args = argumentsForCompilation(golden.options.arguments)
+  # add the source filename to compilation arguments
+  args.add compilation.source.path
+  result = await golden.benchmark(compiler.binary.path, args)
+
 iterator benchmarkNim*(golden: Golden; bench: var BenchmarkResult;
                        filename: string): Future[BenchmarkResult] =
   ## benchmark a source file
+  assert CompileOnly notin golden.options.flags
   var
     future = newFuture[BenchmarkResult]()
-    compiler: CompilerInfo
-    compilerHash: Future[string]
-
-  # do an initial compilation
-  var
-    compilation = waitfor compileFile(filename, golden.options.arguments)
-  if compilation.okay:
+    compilation = prepareCompilation(filename)
     compiler = compilation.compiler
-    bench.compilations.add compilation
-    compilerHash = compiler.sniffCompilerGitHash
+    # the compilation binary (the target output) is only partially built here
+    # but at least the source detail is fully built
+    args = argumentsForCompilation(golden.options.arguments)
 
-  # FIXME: this is kinda dumb, due to changes...
-  compiler.chash = waitfor compilerHash
+  # add the source filename to compilation arguments
+  args.add compilation.source.path
+
+  # perform the compilation
+  compilation.invocation = waitfor invoke(compiler.binary, args)
+  if compilation.invocation.okay:
+    # populate this partially-built file detail
+    compilation.binary = newFileDetailWithInfo(compilation.binary.path)
+
+  # now the compilation is pretty solid; let's add it to the benchmark
+  bench.compilations.add compilation
+  # and yield it so the user can see the compilation result
   future.complete(bench)
   yield future
 
   # if the compilation was successful,
-  # yield a benchmark of the executable we just build
+  # we go on to yield a benchmark of the executable we just built
   if compilation.invocation.okay:
-    yield golden.benchmark(bench, compilation.binary.path,
+    yield golden.benchmark(compilation.binary.path,
                            golden.options.arguments)
 
 proc output*(golden: Golden; benchmark: BenchmarkResult; desc: string = "") =

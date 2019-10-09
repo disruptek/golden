@@ -32,21 +32,33 @@ type
     cpu*: RunningStat
     memory*: RunningStat
 
-proc `$`*(running: RunningResult): string =
+proc toTerminalTable(running: RunningResult): ref TerminalTable =
   let
     stat = running.wall
   var
     row: seq[string]
-    table = newUnicodeTable()
-  table.setHeaders @["#", "Min", "Max", "Mean", "StdDev"]
-  table.separateRows = false
+  result = newUnicodeTable()
+  result.setHeaders @["     #", "Min", "Max", "Mean", "StdDev"]
+  result.separateRows = false
   row.add fmt"{stat.n:>6d}"
   row.add fmt"{stat.min:>0.6f}"
   row.add fmt"{stat.max:>0.6f}"
   row.add fmt"{stat.mean:>0.6f}"
   row.add fmt"{stat.standardDeviation:>0.6f}"
-  table.addRow row
+  result.addRow row
+
+proc `$`*(running: RunningResult): string =
+  let table = running.toTerminalTable
   result = table.render.strip
+
+proc output*(golden: Golden; running: RunningResult; desc: string = "") =
+  let color = ColorConsole in golden.options.flags
+  if desc != "":
+    running.description = desc
+
+  let table = running.toTerminalTable(color)
+  golden.output "running " & desc
+  golden.output table.render.strip
 
 proc len*(running: RunningResult): int =
   result = running.wall.n
@@ -54,9 +66,9 @@ proc len*(running: RunningResult): int =
 proc isEmpty*(running: RunningResult): bool =
   result = running.list.isEmpty
 
-proc first*(running: RunningResult): InvocationInfo =
-  assert running.len > 0
-  result = running.list.head.value
+proc first*[T](running: RunningResult[T]): T =
+  assert not running.isEmpty
+  result = running.list.first
 
 converter toSeconds(wall: WallDuration): StatValue =
   result = wall.inNanoSeconds.StatValue / billion

@@ -9,6 +9,7 @@ import cligen
 import golden/spec
 import golden/output
 import golden/benchmark
+import golden/running
 
 import golden/lm as dbImpl
 
@@ -45,16 +46,29 @@ iterator performBenchmarks(golden: Golden; targets: seq[string]): Future[Benchma
     when not defined(release) and not defined(danger):
       golden.output "close took " & secs.render, fg = fgMagenta
 
-  for filename in targets.items:
-    var bench = newBenchmarkResult()
-    if filename.appearsToBeCompileableSource:
-      for b in golden.benchmarkNim(bench, filename):
-        # first is the compilations, next is binary benches
-        yield b
-    else:
-      yield golden.benchmark(bench, filename, golden.options.arguments)
+  # compile-only mode, for benchmarking the compiler
+  if CompileOnly in golden.options.flags:
+    for filename in targets.items:
+      if not filename.appearsToBeCompileableSource:
+        quit filename & ": does not appear to be compileable Nim source"
+    for filename in targets.items:
+      yield golden.benchmarkCompiler(filename)
+
+  # mostly-run mode, for benchmarking runtimes
+  else:
+    for filename in targets.items:
+      if filename.appearsToBeCompileableSource:
+        var bench = newBenchmarkResult()
+        # compile it, then benchmark it
+        for b in golden.benchmarkNim(bench, filename):
+          # first is the compilations, next is binary benches
+          yield b
+      else:
+        # just benchmark it; it's already executable, we hope
+        yield golden.benchmark(filename, golden.options.arguments)
 
 proc golden(sources: seq[string]; args: string = "";
+            compilation_only: bool = false;
             color_forced: bool = false; json_output: bool = false;
             interactive_forced: bool = false; graphs_in_console: bool = false;
             prune_outliers: float = 0.0; histogram_classes: int = 10;
@@ -80,6 +94,8 @@ proc golden(sources: seq[string]; args: string = "";
     golden.options.flags.incl ConsoleGraphs
   if dry_run:
     golden.options.flags.incl DryRun
+  if compilation_only:
+    golden.options.flags.incl CompileOnly
 
   golden.options.honesty = truth
   golden.options.prune = prune_outliers
@@ -116,7 +132,13 @@ proc golden(sources: seq[string]; args: string = "";
 
   for bench in golden.performBenchmarks(targets):
     try:
-      discard waitfor bench
+      let mark = waitfor bench
+      # output compilation info here for now
+      if not mark.compilations.isEmpty and mark.invocations.isEmpty:
+        if not mark.compilations.first.invocation.okay:
+          golden.output mark.compilations.first.invocation, "failed compilation"
+        else:
+          golden.output mark, "compilations"
     except BenchmarkusInterruptus:
       break
     except Exception as e:

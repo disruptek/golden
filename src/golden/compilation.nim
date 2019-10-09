@@ -88,3 +88,23 @@ proc compileFile*(filename: string; arguments: seq[string]): Future[CompilationI
   if comp.invocation.okay:
     comp.binary = newFileDetailWithInfo(target)
   result = comp
+
+proc argumentsForCompilation*(args: seq[string]): seq[string] =
+  # support lazy folks
+  if args.len == 0:
+    result = @["c", "-d:danger"]
+  elif args[0] notin ["c", "cpp", "js"]:
+    result = @["c"].concat(args)
+  else:
+    result = args
+
+proc prepareCompilation*(filename: string): CompilationInfo =
+  ## compile a source file and yield details of the event
+  let
+    target = pathToCompilationTarget(filename)
+
+  result = newCompilationInfo()
+  result.source = newFileDetailWithInfo(filename)
+  result.binary = newFileDetail(target)
+  # i'm lazy, okay?
+  result.compiler.chash = waitfor result.compiler.sniffCompilerGitHash

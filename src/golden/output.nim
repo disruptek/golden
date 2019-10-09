@@ -105,7 +105,7 @@ template output*(golden: Golden; gold: GoldObject; desc: string = "") =
 proc output*(golden: Golden; output: OutputInfo; desc: string = "") =
   if desc != "":
     output.description = desc
-  if Interactive in golden.options.flags:
+  if ColorConsole in golden.options.flags:
     if output.stdout.len > 0:
       golden.output output.stdout, fg = fgCyan
     if output.stderr.len > 0:

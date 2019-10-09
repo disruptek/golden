@@ -78,6 +78,7 @@ type
     ColorConsole
     ConsoleGraphs
     DryRun
+    CompileOnly
 
   GoldenOptions* = object
     flags*: set[GoldenFlag]
@@ -116,10 +117,13 @@ proc newRuntimeInfo*(): RuntimeInfo =
   new result
   result.init "runtime"
 
-proc newFileDetail*(path: string; size: FileSize; digest: string): FileDetail =
+proc newFileDetail*(path: string): FileDetail =
   new result
   result.init "file"
   result.path = path
+
+proc newFileDetail*(path: string; size: FileSize; digest: string): FileDetail =
+  result = newFileDetail(path)
   result.size = size
   result.digest = digest
 
@@ -130,7 +134,7 @@ proc newFileDetail*(path: string; info: FileInfo): FileDetail =
   result.kind = info.kind
 
 proc newFileDetailWithInfo*(path: string): FileDetail =
-  assert path.fileExists
+  assert path.fileExists, "path `" & path & "` does not exist"
   result = newFileDetail(path, getFileInfo(path))
 
 proc newGolden*(): Golden =
