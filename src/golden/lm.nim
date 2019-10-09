@@ -34,13 +34,17 @@ proc close*(self: GoldenDatabase) {.async.} =
   ## close the database
   envClose(self.db)
 
-proc open(self: GoldenDatabase; path: string) {.async.} =
+proc open(self: GoldenDatabase; path: string; readOnly: bool = false) {.async.} =
   ## open the database
-  if not path.existsDir:
-    createDir path
+  var flags = 0
+  if readOnly:
+    flags = RDONLY
+  else:
+    if not path.existsDir:
+      createDir path
   # we probably only need one, but
   # we might need as many as two for a migration
-  self.db = newLMDBEnv(path, maxdbs = 2)
+  self.db = newLMDBEnv(path, maxdbs = 2, openflags = flags)
 
 proc getModelVersion(self: GoldenDatabase): ModelVersion =
   result = ModelVersion.low
@@ -135,10 +139,10 @@ proc storagePath(filename: string): string =
     tail = "." & tail & ".golden-lmdb"
   result = head / tail
 
-proc open*(filename: string): Future[GoldenDatabase] {.async.} =
+proc open*(filename: string; flags: set[GoldenFlag]): Future[GoldenDatabase] {.async.} =
   ## instantiate a database using the filename
   new result
   result.path = storagePath(filename)
-  await result.open(result.path)
+  await result.open(result.path, readOnly = DryRun in flags)
   result.version = result.upgradeDatabase()
   result.store = getFileInfo(result.path)

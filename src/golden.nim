@@ -7,144 +7,52 @@ import logging
 import cligen
 
 import golden/spec
-import golden/invoke
 import golden/output
 import golden/benchmark
-import golden/running
 
 import golden/lm as dbImpl
 
 when defined(git2SetVer):
   import golden/git as git
 
-type
-  BenchmarkusInterruptus = IOError
-
 when false:
   proc shutdown(golden: Golden) {.async.} =
     when defined(git2SetVer):
       git.shutdown()
 
-proc loadDatabaseForFile(filename: string): Future[GoldenDatabase] {.async.} =
+proc loadDatabase(golden: Golden; targets: seq[string]): Future[GoldenDatabase] {.async.} =
   ## load a database using a filename
-  result = await dbImpl.open(filename)
-
-proc pathToCompilationTarget(filename: string): string =
-  ## calculate the path of a source file's compiled binary output
-  assert filename.endsWith ".nim"
-  var (head, tail) = filename.absolutePath.normalizedPath.splitPath
-  tail.removeSuffix ".nim"
-  result = head / tail
-
-proc sniffCompilerGitHash*(compiler: CompilerInfo): Future[string] {.async.} =
-  ## determine the git hash of the compiler binary if possible;
-  ## this should ideally compile a file to measure the version constants, too.
-  const pattern = "git hash: "
-  let invocation = await invoke(compiler.binary, @["--version"])
-  if invocation.okay:
-    for line in invocation.output.stdout.splitLines:
-      if line.startsWith(pattern):
-        let commit = line[pattern.len .. ^1]
-        if commit.len == 40:
-          result = commit
-          break
-
-proc compileFile*(filename: string): Future[CompilationInfo] {.async.} =
-  ## compile a source file and yield details of the event
-  var
-    comp = newCompilationInfo()
-  let
-    target = pathToCompilationTarget(filename)
-    compiler = comp.compiler
-
-  comp.source = newFileDetailWithInfo(filename)
-  comp.invocation = await invoke(compiler.binary,
-                                   @["c", "-d:danger", comp.source.path])
-  if comp.invocation.okay:
-    comp.binary = newFileDetailWithInfo(target)
-  result = comp
-
-proc benchmark*(golden: Golden; filename: string; args: seq[string] = @[]): Future[BenchmarkResult] {.async.} =
-  ## benchmark a source file
-  var
-    compiler: CompilerInfo
-    compilerHash: Future[string]
-    bench = newBenchmarkResult()
-    invocation: InvocationInfo
-    storage: string
-    outputs, fib = 0
-    clock = getTime()
-    secs: Duration
-
+  var storage: string
   # see if we need to hint at a specific storage site
   if golden.options.storage != "":
     storage = golden.options.storage
+  elif targets.len == 1:
+    storage = targets[0]
   else:
-    storage = filename
+    storage = parentDir(targets[0]) / $targets.join("").toMD5
+  result = await dbImpl.open(storage, golden.options.flags)
 
-  # setup the db and prepare to close it down again
+iterator performBenchmarks(golden: Golden; targets: seq[string]): Future[BenchmarkResult] =
   var
-    db = await loadDatabaseForFile(storage)
+    db: GoldenDatabase
+
+  db = waitfor golden.loadDatabase(targets)
+  # setup the db and prepare to close it down again
   defer:
-    clock = getTime()
-    await db.close
-    secs = getTime() - clock
+    let clock = getTime()
+    waitfor db.close
+    let secs = getTime() - clock
     when not defined(release) and not defined(danger):
       golden.output "close took " & secs.render, fg = fgMagenta
 
-  # do an initial compilation
-  var
-    compilation = await compileFile(filename)
-  if compilation.okay:
-    compiler = compilation.compiler
-    bench.compilations.add compilation
-    compilerHash = compiler.sniffCompilerGitHash
-  invocation = compilation.invocation
-
-  # now we loop on invocations of the compiled binary,
-  # if it was successfully built above
-  clock = getTime()
-  try:
-    while invocation.okay:
-      when defined(debugFdLeak):
-        {.warning: "this build is for debugging fd leak".}
-        invocation = await invoke("/usr/bin/lsof", "-p", getCurrentProcessId())
-        golden.output invocation.output.stdout
-      invocation = await invoke(compilation.binary, args)
-      if invocation.okay:
-        bench.invocations.add invocation
-      else:
-        golden.output invocation, "failed invocation"
-      secs = getTime() - clock
-      let truthy = bench.invocations.truthy(golden.options.honesty)
-      when not defined(debug):
-        if not truthy and secs.inSeconds < fib:
-          continue
-      outputs.inc
-      fib = fibonacci(outputs)
-      clock = getTime()
-      golden.output bench, "benchmark"
-      if truthy:
-        break
-  except BenchmarkusInterruptus:
-    if not bench.invocations.isEmpty or not bench.compilations.isEmpty:
-      golden.output bench, "premature termination"
-  except Exception as e:
-    if not bench.invocations.isEmpty or not bench.compilations.isEmpty:
-      golden.output bench, "premature termination"
-    golden.output e.msg
-
-  # we should have the git commit hash of the compiler by now
-  compiler.chash = await compilerHash
-
-  # here we will synchronize the benchmark to the database if needed
-  if DryRun notin golden.options.flags:
-    clock = getTime()
-    secs = getTime() - clock
-    when not defined(release) and not defined(danger):
-      golden.output "sync took " & secs.render, fg = fgMagenta
-
-  result = bench
+  for filename in targets.items:
+    var bench = newBenchmarkResult()
+    if filename.appearsToBeCompileableSource:
+      for b in golden.benchmarkNim(bench, filename):
+        # first is the compilations, next is binary benches
+        yield b
+    else:
+      yield golden.benchmark(bench, filename, golden.options.arguments)
 
 proc golden(sources: seq[string]; args: string = "";
             color_forced: bool = false; json_output: bool = false;
@@ -154,7 +62,7 @@ proc golden(sources: seq[string]; args: string = "";
   ## Nim benchmarking tool;
   ## pass 1+ .nim source files to compile and benchmark
   var
-    arguments: seq[string]
+    targets: seq[string]
     golden = newGolden()
 
   when defined(git2SetVer):
@@ -178,7 +86,27 @@ proc golden(sources: seq[string]; args: string = "";
   golden.options.classes = histogram_classes
   golden.options.storage = storage_path
 
-  golden.output golden.compiler, "current compiler"
+  # work around cligen --stopWords support
+  for index in 1 .. paramCount():
+    targets.add paramStr(index)
+  let dashdash = targets.find("--")
+  if dashdash == -1:
+    targets = sources
+  else:
+    golden.options.arguments = targets[dashdash + 1 .. ^1]
+    targets = targets[0 ..< dashdash]
+    while targets[0] notin sources:
+      targets = targets[1 .. ^1]
+
+  if args != "":
+    quit "sorry; use `golden --flags source.nim -- arg1 arg2 ... argN` syntax"
+
+  for filename in targets.items:
+    if not filename.appearsBenchmarkable:
+      quit "don't know how to benchmark `" & filename & "`"
+
+  if targets.len == 0:
+    quit "provide some files to benchmark, or\n" & paramStr(0) & " --help"
 
   # capture interrupts
   if Interactive in golden.options.flags:
@@ -186,13 +114,13 @@ proc golden(sources: seq[string]; args: string = "";
       raise newException(BenchmarkusInterruptus, "")
     setControlCHook(sigInt)
 
-  if args != "":
-    arguments = args.split(" ")
-
-  for filename in sources.items:
-    if not filename.appearsBenchmarkable:
-      quit "don't know how to benchmark `" & filename & "`"
-    discard waitfor golden.benchmark(filename, arguments)
+  for bench in golden.performBenchmarks(targets):
+    try:
+      discard waitfor bench
+    except BenchmarkusInterruptus:
+      break
+    except Exception as e:
+      golden.output e.msg
 
 when isMainModule:
   # log only warnings in release
@@ -203,4 +131,4 @@ when isMainModule:
   let logger = newConsoleLogger(useStderr=true, levelThreshold=level)
   addHandler(logger)
 
-  dispatch golden
+  dispatch(golden, stopWords = @["--"])

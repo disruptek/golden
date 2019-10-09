@@ -21,6 +21,8 @@ const
   billion* = 1_000_000_000
 
 type
+  BenchmarkusInterruptus* = IOError
+
   Sync* {.pure.} = enum
     Okay
     Read
@@ -70,20 +72,6 @@ type
     runtime*: RuntimeInfo
     output*: OutputInfo
 
-  CompilerInfo* = ref object of GoldObject
-    binary*: FileDetail
-    version*: string
-    major*: int
-    minor*: int
-    patch*: int
-    chash*: string
-
-  CompilationInfo* = ref object of GoldObject
-    compiler*: CompilerInfo
-    invocation*: InvocationInfo
-    source*: FileDetail
-    binary*: FileDetail
-
   GoldenFlag* = enum
     Interactive
     PipeOutput
@@ -93,13 +81,13 @@ type
 
   GoldenOptions* = object
     flags*: set[GoldenFlag]
+    arguments*: seq[string]
     honesty*: float
     prune*: float
     classes*: int
     storage*: string
 
   Golden* = ref object of GoldObject
-    compiler*: CompilerInfo
     options*: GoldenOptions
 
 method init*(gold: GoldObject; text: string) {.base.} =
@@ -145,24 +133,9 @@ proc newFileDetailWithInfo*(path: string): FileDetail =
   assert path.fileExists
   result = newFileDetail(path, getFileInfo(path))
 
-proc newCompilerInfo*(hint: string = ""): CompilerInfo =
-  var path: string
-  new result
-  result.init "compiler"
-  result.version = NimVersion
-  result.major = NimMajor
-  result.minor = NimMinor
-  result.patch = NimPatch
-  if hint == "":
-    path = getCurrentCompilerExe()
-  else:
-    path = hint
-  result.binary = newFileDetailWithInfo(path)
-
 proc newGolden*(): Golden =
   new result
   result.init "golden"
-  result.compiler = newCompilerInfo()
   if stdmsg().isatty:
     result.options.flags.incl Interactive
     result.options.flags.incl ColorConsole
@@ -186,16 +159,6 @@ proc newInvocationInfo*(): InvocationInfo =
 proc newInvocationInfo*(binary: FileDetail; args: seq[string] = @[]): InvocationInfo =
   result = newInvocationInfo()
   result.init(binary, args = args)
-
-proc okay*(compilation: CompilationInfo): bool =
-  result = compilation.invocation.okay
-
-proc newCompilationInfo*(compiler: CompilerInfo = nil): CompilationInfo =
-  new result
-  result.init "compile"
-  result.compiler = compiler
-  if result.compiler == nil:
-    result.compiler = newCompilerInfo()
 
 proc fibonacci*(x: int): int =
   result = if x <= 2: 1
