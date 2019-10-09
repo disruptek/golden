@@ -4,6 +4,7 @@ import terminal
 import json
 
 import spec
+import compilation
 
 export terminal
 
@@ -43,8 +44,7 @@ proc `$`*(runtime: RuntimeInfo): string =
   result = runtime.wall.render
 
 proc `$`*(invocation: InvocationInfo): string =
-  result = $invocation.binary
-  result &= invocation.arguments.join(" ")
+  result = invocation.commandLine
 
 proc toJson(entry: DateTime): JsonNode =
   result = newJString entry.format(ISO8601noTZ)
