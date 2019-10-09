@@ -12,45 +12,36 @@ $ nimble install golden
 
 ## Usage
 ```
-$ golden --truth=0.01 somesource.nim
 # Compile your code with -d:danger and run it many times.
 # It will dump runtime statistics with fibonacci frequency.
 # It will continue to run the benchmark until the stddev is
 # within `truth` (think percentage) of mean runtime.
 # Ctrl-C when you've had enough.
+$ golden --truth=0.01 bench.nim
 # ...
-bench:5d9652e4615eca6d3e35c38a entry 2019-10-03T15:58:28-04:00
-/some/path/to/somesource
-compilation(s) -- RunningStat(
-  number of probes: 1
-  max: 3.018017831
-  min: 3.018017831
-  sum: 3.018017831
-  mean: 3.018017831
-  std deviation: 0.0
-)
- invocation(s) -- RunningStat(
-  number of probes: 84348
-  max: 0.014843757
-  min: 0.000195513
-  sum: 48.61967556299996
-  mean: 0.0005764176455043348
-  std deviation: 0.0001040502276687006
-)
+bench:5d9e54f2f93ca663167cb2df entry 2019-10-09T17:45:22-04:00
+/home/adavidoff/git/golden/benchmarks/dumb/bench
+invocations:
+┌────────┬──────────┬──────────┬──────────┬──────────┐
+│ #      │ Min      │ Max      │ Mean     │ StdDev   │
+├────────┼──────────┼──────────┼──────────┼──────────┤
+│    530 │ 0.100460 │ 0.101993 │ 0.101165 │ 0.000542 │
+└────────┴──────────┴──────────┴──────────┴──────────┘
 ```
 
 Benchmarking the compilation of Nim itself:
 ```
 $ cd ~/git/Nim
 $ golden koch -- boot -d:danger
- invocation(s) -- RunningStat(
-  number of probes: 16
-  max: 9.345349467
-  min: 8.659001024
-  sum: 141.675704772
-  mean: 8.854731548249999
-  std deviation: 0.1878308778737006
-)
+...
+bench:5d9e544bc197dd2569de3b80 entry 2019-10-09T17:42:35-04:00
+/home/adavidoff/git/Nim/koch boot -d:danger
+invocations:
+┌────────┬──────────┬──────────┬──────────┬──────────┐
+│ #      │ Min      │ Max      │ Mean     │ StdDev   │
+├────────┼──────────┼──────────┼──────────┼──────────┤
+│     12 │ 8.846606 │ 9.485832 │ 8.945023 │ 0.165638 │
+└────────┴──────────┴──────────┴──────────┴──────────┘
 ```
 
 ## Command Line Options
