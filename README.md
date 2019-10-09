@@ -1,6 +1,7 @@
 # golden
 
-A benchmark for compile-time and/or runtime Nim.
+A benchmarking tool that measures and records runtime of any executable and
+also happens to know how to compile Nim.
 
 Currently pretty crude, but things are coming together.
 
@@ -41,15 +42,7 @@ compilation(s) -- RunningStat(
 Benchmarking the compilation of Nim itself:
 ```
 $ cd ~/git/Nim
-$ golden --args="boot -d:danger" koch.nim
-compilation(s) -- RunningStat(
-  number of probes: 1
-  max: 0.852614852
-  min: 0.852614852
-  sum: 0.852614852
-  mean: 0.852614852
-  std deviation: 0.0
-)
+$ golden koch -- boot -d:danger
  invocation(s) -- RunningStat(
   number of probes: 16
   max: 9.345349467
@@ -71,6 +64,7 @@ compilation(s) -- RunningStat(
  - `prune-outliers` throw out this percentage of aberrant invocations with long runtime in order to clean up the histogram
  - `dry-run` don't write any results to the database
  - `histogram-classes` the number of points in the histogram
+ - `--` the following arguments are passed to the compiler and runtime. Note that if you supply `-- cpp` for compilation via C++, you will need to supply your own defines such as `-d:danger`.
 
 ## License
 MIT
