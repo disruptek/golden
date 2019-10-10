@@ -11,13 +11,19 @@ $ nimble install golden
 ```
 
 ## Usage
+
+If you pass it a binary, it'll run it a bunch of times and report some runtime
+statistics periodically.
+
+If you pass it some Nim source, it will compile it for you and report some
+compilation and runtime statistics periodically.
+
+It will keep running until the standard deviation is within `truth` (think
+percentage) of mean runtime. It handles a SIGINT more gracefully than my
+ex-wife.
+
 ```
 $ golden --truth=0.002 bench.nim
-# It will compile your code with -d:danger and run it many times.
-# It will dump runtime statistics with fibonacci frequency.
-# It will continue to run the benchmark until the stddev is
-# within `truth` (think percentage) of mean runtime.
-# Ctrl-C when you've had enough.
 compilations after 0s
 ┌────────┬──────────┬──────────┬──────────┬──────────┐
 │ Builds │ Min      │ Max      │ Mean     │ StdDev   │
