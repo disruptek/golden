@@ -6,6 +6,21 @@ also happens to know how to compile Nim.
 Currently pretty crude, but things are coming together.
 
 ## Installation
+
+### Lightning Memory-Mapped Database
+
+You will need to install LMDB so that the Nim wrapper can bind to it. [This
+is a link to the Nim wrapper](https://github.com/FedericoCeratto/nim-lmdb)
+and [this is a link to the Symas web-page with more information on
+LMDB](https://symas.com/lmdb/).
+
+It may sound like I'm asking you to install a behemoth closed-source binary.
+**This is not that**. It's open, _very_ small, _very_ fast, and I was already
+using it on my system for `postfix` and `neomutt` when I decided to use it here.
+
+### Nimble
+
+If LMDB is installed, you can simply
 ```
 $ nimble install golden
 ```
