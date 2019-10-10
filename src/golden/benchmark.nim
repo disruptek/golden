@@ -201,7 +201,7 @@ proc benchmarkCompiler*(golden: Golden;
                         filename: string): Future[BenchmarkResult] {.async.} =
   assert CompileOnly in golden.options.flags
   var
-    compilation = prepareCompilation(filename)
+    compilation = newCompilationInfo(filename)
     compiler = compilation.compiler
     args = argumentsForCompilation(golden.options.arguments)
   # add the source filename to compilation arguments
@@ -214,7 +214,7 @@ iterator benchmarkNim*(golden: Golden; bench: var BenchmarkResult;
   assert CompileOnly notin golden.options.flags
   var
     future = newFuture[BenchmarkResult]()
-    compilation = prepareCompilation(filename)
+    compilation = newCompilationInfo(filename)
     compiler = compilation.compiler
     # the compilation binary (the target output) is only partially built here
     # but at least the source detail is fully built

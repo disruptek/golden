@@ -36,16 +36,8 @@ proc newCompilerInfo*(hint: string = ""): CompilerInfo =
     path = hint
   result.binary = newFileDetailWithInfo(path)
 
-
 proc okay*(compilation: CompilationInfo): bool =
   result = compilation.invocation.okay
-
-proc newCompilationInfo*(compiler: CompilerInfo = nil): CompilationInfo =
-  new result
-  result.init "compile"
-  result.compiler = compiler
-  if result.compiler == nil:
-    result.compiler = newCompilerInfo()
 
 proc pathToCompilationTarget(filename: string): string =
   ## calculate the path of a source file's compiled binary output
@@ -67,7 +59,34 @@ proc sniffCompilerGitHash*(compiler: CompilerInfo): Future[string] {.async.} =
           result = commit
           break
 
-proc compileFile*(filename: string; arguments: seq[string]): Future[CompilationInfo] {.async.} =
+proc argumentsForCompilation*(args: seq[string]): seq[string] =
+  # support lazy folks
+  if args.len == 0:
+    result = @["c", "-d:danger"]
+  elif args[0] notin ["c", "cpp", "js"]:
+    result = @["c"].concat(args)
+  else:
+    result = args
+
+proc newCompilationInfo*(compiler: CompilerInfo = nil): CompilationInfo =
+  new result
+  result.init "compile"
+  result.compiler = compiler
+  if result.compiler == nil:
+    result.compiler = newCompilerInfo()
+
+proc newCompilationInfo*(filename: string; compiler: CompilerInfo = nil): CompilationInfo =
+  let
+    target = pathToCompilationTarget(filename)
+
+  result = newCompilationInfo(compiler)
+  result.source = newFileDetailWithInfo(filename)
+  result.binary = newFileDetail(target)
+  # i'm lazy, okay?  cache your compiler to avoid this.
+  if compiler == nil:
+    result.compiler.chash = waitfor result.compiler.sniffCompilerGitHash
+
+proc compileFile*(filename: string; arguments: seq[string]): Future[CompilationInfo] {.deprecated, async.} =
   ## compile a source file and yield details of the event
   var
     comp = newCompilationInfo()
@@ -88,23 +107,3 @@ proc compileFile*(filename: string; arguments: seq[string]): Future[CompilationI
   if comp.invocation.okay:
     comp.binary = newFileDetailWithInfo(target)
   result = comp
-
-proc argumentsForCompilation*(args: seq[string]): seq[string] =
-  # support lazy folks
-  if args.len == 0:
-    result = @["c", "-d:danger"]
-  elif args[0] notin ["c", "cpp", "js"]:
-    result = @["c"].concat(args)
-  else:
-    result = args
-
-proc prepareCompilation*(filename: string): CompilationInfo =
-  ## compile a source file and yield details of the event
-  let
-    target = pathToCompilationTarget(filename)
-
-  result = newCompilationInfo()
-  result.source = newFileDetailWithInfo(filename)
-  result.binary = newFileDetail(target)
-  # i'm lazy, okay?
-  result.compiler.chash = waitfor result.compiler.sniffCompilerGitHash
