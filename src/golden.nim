@@ -67,7 +67,7 @@ iterator performBenchmarks(golden: Golden; targets: seq[string]): Future[Benchma
         # just benchmark it; it's already executable, we hope
         yield golden.benchmark(filename, golden.options.arguments)
 
-proc golden(sources: seq[string]; args: string = "";
+proc golden(sources: seq[string];
             compilation_only: bool = false;
             color_forced: bool = false; json_output: bool = false;
             interactive_forced: bool = false; graphs_in_console: bool = false;
@@ -110,12 +110,7 @@ proc golden(sources: seq[string]; args: string = "";
     targets = sources
   else:
     golden.options.arguments = targets[dashdash + 1 .. ^1]
-    targets = targets[0 ..< dashdash]
-    while targets[0] notin sources:
-      targets = targets[1 .. ^1]
-
-  if args != "":
-    quit "sorry; use `golden --flags source.nim -- arg1 arg2 ... argN` syntax"
+    targets = sources[0 ..< sources.len - golden.options.arguments.len]
 
   for filename in targets.items:
     if not filename.appearsBenchmarkable:
