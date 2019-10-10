@@ -42,6 +42,38 @@ proc newBenchmarkResult*(): BenchmarkResult =
   result.compilations = newRunningResult[CompilationInfo]()
   result.invocations = newRunningResult[InvocationInfo]()
 
+proc output*(golden: Golden; benchmark: BenchmarkResult; desc: string = "") =
+  ## generally used to output a benchmark result periodically
+  let since = getTime() - benchmark.entry.toTime
+  golden.output desc & " after " & $since.inSeconds & "s"
+  if benchmark.invocations.len > 0:
+    let invocation = benchmark.invocations.first
+    if not invocation.okay:
+      golden.output invocation
+  if benchmark.invocations.len == 0:
+    if benchmark.compilations.len > 0:
+      golden.output benchmark.compilations, "Builds"
+  else:
+    golden.output benchmark.invocations, "Runs"
+  when defined(plotGraphs):
+    while ConsoleGraphs in golden.options.flags:
+      var
+        dims = benchmark.invocations.wall.makeDimensions(golden.options.classes)
+        histo = benchmark.invocations.crudeHistogram(dims)
+      if benchmark.invocations.maybePrune(histo, dims, golden.options.prune):
+        continue
+      golden.output $histo
+      # hangs if histo.len == 1 due to max-min == 0
+      if histo.len <= 1:
+        break
+      let filename = plot.consolePlot(benchmark.invocations.wall, histo, dims)
+      if os.getEnv("TERM", "") == "xterm-kitty":
+        let kitty = "/usr/bin/kitty"
+        if kitty.fileExists:
+          var process = startProcess(kitty, args = @["+kitten", "icat", filename], options = {poInteractive, poParentStreams})
+          discard process.waitForExit
+      break
+
 const
   executable = {fpUserExec, fpGroupExec, fpOthersExec}
   readable = {fpUserRead, fpGroupRead, fpOthersRead}
@@ -208,27 +240,3 @@ iterator benchmarkNim*(golden: Golden; bench: var BenchmarkResult;
   if compilation.invocation.okay:
     yield golden.benchmark(compilation.binary.path,
                            golden.options.arguments)
-
-proc output*(golden: Golden; benchmark: BenchmarkResult; desc: string = "") =
-  ## generally used to output a benchmark result periodically
-  let since = getTime() - benchmark.entry.toTime
-  golden.output desc & " after " & $since.inSeconds & "s"
-  golden.output $benchmark
-  when defined(plotGraphs):
-    while ConsoleGraphs in golden.options.flags:
-      var
-        dims = benchmark.invocations.wall.makeDimensions(golden.options.classes)
-        histo = benchmark.invocations.crudeHistogram(dims)
-      if benchmark.invocations.maybePrune(histo, dims, golden.options.prune):
-        continue
-      golden.output $histo
-      # hangs if histo.len == 1 due to max-min == 0
-      if histo.len <= 1:
-        break
-      let filename = plot.consolePlot(benchmark.invocations.wall, histo, dims)
-      if os.getEnv("TERM", "") == "xterm-kitty":
-        let kitty = "/usr/bin/kitty"
-        if kitty.fileExists:
-          var process = startProcess(kitty, args = @["+kitten", "icat", filename], options = {poInteractive, poParentStreams})
-          discard process.waitForExit
-      break

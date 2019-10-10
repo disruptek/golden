@@ -15,6 +15,7 @@ import msgpack4nim
 import spec
 import linkedlists
 import compilation
+import output
 
 export stats
 
@@ -32,13 +33,13 @@ type
     cpu*: RunningStat
     memory*: RunningStat
 
-proc toTerminalTable(running: RunningResult): ref TerminalTable =
+proc toTerminalTable(running: RunningResult; name: string): ref TerminalTable =
   let
     stat = running.wall
   var
     row: seq[string]
   result = newUnicodeTable()
-  result.setHeaders @["     #", "Min", "Max", "Mean", "StdDev"]
+  result.setHeaders @[name, "Min", "Max", "Mean", "StdDev"]
   result.separateRows = false
   row.add fmt"{stat.n:>6d}"
   row.add fmt"{stat.min:>0.6f}"
@@ -48,16 +49,13 @@ proc toTerminalTable(running: RunningResult): ref TerminalTable =
   result.addRow row
 
 proc `$`*(running: RunningResult): string =
-  let table = running.toTerminalTable
+  let table = running.toTerminalTable("     #")
   result = table.render.strip
 
 proc output*(golden: Golden; running: RunningResult; desc: string = "") =
-  let color = ColorConsole in golden.options.flags
   if desc != "":
     running.description = desc
-
-  let table = running.toTerminalTable(color)
-  golden.output "running " & desc
+  let table = running.toTerminalTable(desc)
   golden.output table.render.strip
 
 proc len*(running: RunningResult): int =
