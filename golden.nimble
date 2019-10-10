@@ -1,4 +1,4 @@
-version = "2.3.1"
+version = "2.3.2"
 author = "disruptek"
 description = "a benchmark tool"
 license = "MIT"
@@ -9,11 +9,8 @@ requires "nimetry 0.1.2"
 #requires "plotly >= 0.1.0"
 requires "msgpack4nim 0.2.9"
 requires "lmdb 0.1.1"
-#requires "terminaltables 0.1.1"
-requires "terminaltables"
-#requires "http://github.com/genotrance/nimgit2.git 0.1.0"
-requires "http://github.com/genotrance/nimgit2.git"
-#requires "nimgit2 >= 0.1.0"
+requires "terminaltables 0.1.1"
+requires "nimgit2 0.1.0"
 
 bin = @["golden"]
 
