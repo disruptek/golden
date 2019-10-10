@@ -12,19 +12,35 @@ $ nimble install golden
 
 ## Usage
 ```
-$ golden --truth=0.01 bench.nim
+$ golden --truth=0.002 bench.nim
 # It will compile your code with -d:danger and run it many times.
 # It will dump runtime statistics with fibonacci frequency.
 # It will continue to run the benchmark until the stddev is
 # within `truth` (think percentage) of mean runtime.
 # Ctrl-C when you've had enough.
-bench:5d9e54f2f93ca663167cb2df entry 2019-10-09T17:45:22-04:00
-/home/adavidoff/git/golden/benchmarks/dumb/bench
-invocations:
+compilations after 0s
 ┌────────┬──────────┬──────────┬──────────┬──────────┐
-│ #      │ Min      │ Max      │ Mean     │ StdDev   │
+│ Builds │ Min      │ Max      │ Mean     │ StdDev   │
 ├────────┼──────────┼──────────┼──────────┼──────────┤
-│    530 │ 0.100460 │ 0.101993 │ 0.101165 │ 0.000542 │
+│      1 │ 0.396129 │ 0.396129 │ 0.396129 │ 0.000000 │
+└────────┴──────────┴──────────┴──────────┴──────────┘
+benchmark after 1s
+┌────────┬──────────┬──────────┬──────────┬──────────┐
+│ Runs   │ Min      │ Max      │ Mean     │ StdDev   │
+├────────┼──────────┼──────────┼──────────┼──────────┤
+│      1 │ 1.959187 │ 1.959187 │ 1.959187 │ 0.000000 │
+└────────┴──────────┴──────────┴──────────┴──────────┘
+benchmark after 3s
+┌────────┬──────────┬──────────┬──────────┬──────────┐
+│ Runs   │ Min      │ Max      │ Mean     │ StdDev   │
+├────────┼──────────┼──────────┼──────────┼──────────┤
+│      2 │ 1.958892 │ 1.959187 │ 1.959039 │ 0.000147 │
+└────────┴──────────┴──────────┴──────────┴──────────┘
+completed benchmark after 5s
+┌────────┬──────────┬──────────┬──────────┬──────────┐
+│ Runs   │ Min      │ Max      │ Mean     │ StdDev   │
+├────────┼──────────┼──────────┼──────────┼──────────┤
+│      3 │ 1.958892 │ 1.961293 │ 1.959791 │ 0.001069 │
 └────────┴──────────┴──────────┴──────────┴──────────┘
 ```
 
@@ -32,10 +48,7 @@ Benchmarking the compilation of Nim itself:
 ```
 $ cd ~/git/Nim
 $ golden koch -- boot -d:danger
-...
-bench:5d9e544bc197dd2569de3b80 entry 2019-10-09T17:42:35-04:00
-/home/adavidoff/git/Nim/koch boot -d:danger
-invocations:
+# ...
 ┌────────┬──────────┬──────────┬──────────┬──────────┐
 │ #      │ Min      │ Max      │ Mean     │ StdDev   │
 ├────────┼──────────┼──────────┼──────────┼──────────┤
@@ -47,17 +60,11 @@ Benchmarking compilation of slow-to-compile Nim:
 
 ```
 $ golden --compilation openapi.nim
-bench:5d9e7496380fa518469ca5c4 entry 2019-10-09T20:00:22-04:00
-/home/adavidoff/git/Nim/bin/nim c --forceBuild /home/adavidoff/git/golden/benchmarks/openapi/openapi.nim
-invocations:
 ┌────────┬───────────┬───────────┬───────────┬──────────┐
 │      # │ Min       │ Max       │ Mean      │ StdDev   │
 ├────────┼───────────┼───────────┼───────────┼──────────┤
 │      1 │ 91.946370 │ 91.946370 │ 91.946370 │ 0.000000 │
 └────────┴───────────┴───────────┴───────────┴──────────┘
-bench:5d9e7496380fa518469ca5c4 entry 2019-10-09T20:00:22-04:00
-/home/adavidoff/git/Nim/bin/nim c --forceBuild /home/adavidoff/git/golden/benchmarks/openapi/openapi.nim
-invocations:
 ┌────────┬───────────┬───────────┬───────────┬───────────┐
 │      # │ Min       │ Max       │ Mean      │ StdDev    │
 ├────────┼───────────┼───────────┼───────────┼───────────┤
