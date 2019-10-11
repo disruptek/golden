@@ -79,6 +79,8 @@ type
     ConsoleGraphs
     DryRun
     CompileOnly
+    TimeLimit
+    RunLimit
 
   GoldenOptions* = object
     flags*: set[GoldenFlag]
@@ -87,6 +89,8 @@ type
     prune*: float
     classes*: int
     storage*: string
+    timeLimit*: float
+    runLimit*: int
 
   Golden* = ref object of GoldObject
     options*: GoldenOptions

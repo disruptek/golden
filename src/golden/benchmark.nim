@@ -153,14 +153,15 @@ proc benchmark*(golden: Golden; filename: string;
   ## benchmark an arbitrary executable
   let
     target = newFileDetailWithInfo(filename)
+    wall = getTime()
   var
     bench = newBenchmarkResult()
     invocation: InvocationInfo
-    outputs, fib = 0
-    clock = getTime()
+    runs, outputs, fib = 0
+    lastOutputTime = getTime()
+    truthy = false
     secs: Duration
 
-  clock = getTime()
   var termination = "completed benchmark"
   try:
     while true:
@@ -169,18 +170,26 @@ proc benchmark*(golden: Golden; filename: string;
         invocation = await invoke("/usr/bin/lsof", "-p", getCurrentProcessId())
         golden.output invocation.output.stdout
       invocation = await invoke(target, args)
+      runs.inc
       if invocation.okay:
         bench.invocations.add invocation
       else:
         golden.output invocation, "failed invocation"
-      secs = getTime() - clock
-      let truthy = bench.invocations.truthy(golden.options.honesty)
+      secs = getTime() - wall
+      truthy = bench.invocations.truthy(golden.options.honesty)
+      if RunLimit in golden.options.flags:
+        if runs >= golden.options.runLimit:
+          truthy = true
+      if TimeLimit in golden.options.flags:
+        if secs.toSeconds >= golden.options.timeLimit:
+          truthy = true
       when not defined(debug):
+        secs = getTime() - lastOutputTime
         if not truthy and secs.inSeconds < fib:
           continue
-      outputs.inc
-      fib = fibonacci(outputs)
-      clock = getTime()
+        lastOutputTime = getTime()
+        outputs.inc
+        fib = fibonacci(outputs)
       if truthy or not invocation.okay:
         break
       golden.output bench, "benchmark"

@@ -68,7 +68,7 @@ proc first*[T](running: RunningResult[T]): T =
   assert not running.isEmpty
   result = running.list.first
 
-converter toSeconds(wall: WallDuration): StatValue =
+converter toSeconds*(wall: WallDuration): StatValue =
   result = wall.inNanoSeconds.StatValue / billion
 
 proc standardScore*(stat: RunningStat; value: StatValue): StatValue =

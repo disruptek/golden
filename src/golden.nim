@@ -40,11 +40,7 @@ iterator performBenchmarks(golden: Golden; targets: seq[string]): Future[Benchma
   db = waitfor golden.loadDatabase(targets)
   # setup the db and prepare to close it down again
   defer:
-    let clock = getTime()
     waitfor db.close
-    let secs = getTime() - clock
-    when not defined(release) and not defined(danger):
-      golden.output "close took " & secs.render, fg = fgMagenta
 
   # compile-only mode, for benchmarking the compiler
   if CompileOnly in golden.options.flags:
@@ -69,10 +65,11 @@ iterator performBenchmarks(golden: Golden; targets: seq[string]): Future[Benchma
 
 proc golden(sources: seq[string];
             compilation_only: bool = false;
+            iterations: int = 0; runtime: float = 0.0;
             color_forced: bool = false; json_output: bool = false;
             interactive_forced: bool = false; graphs_in_console: bool = false;
             prune_outliers: float = 0.0; histogram_classes: int = 10;
-            truth: float = 0.01; dry_run: bool = false; storage_path: string = "") =
+            truth: float = 0.0; dry_run: bool = false; storage_path: string = "") =
   ## Nim benchmarking tool;
   ## pass 1+ .nim source files to compile and benchmark
   var
@@ -101,6 +98,12 @@ proc golden(sources: seq[string];
   golden.options.prune = prune_outliers
   golden.options.classes = histogram_classes
   golden.options.storage = storage_path
+  if runtime != 0.0:
+    golden.options.flags.incl TimeLimit
+    golden.options.timeLimit = runtime
+  if iterations != 0:
+    golden.options.flags.incl RunLimit
+    golden.options.runLimit = iterations
 
   # work around cligen --stopWords support
   for index in 1 .. paramCount():
