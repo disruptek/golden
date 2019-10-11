@@ -81,6 +81,8 @@ type
     CompileOnly
     TimeLimit
     RunLimit
+    DumpOutput
+    NeverOutput
 
   GoldenOptions* = object
     flags*: set[GoldenFlag]

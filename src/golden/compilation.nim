@@ -39,7 +39,7 @@ proc newCompilerInfo*(hint: string = ""): CompilerInfo =
 proc okay*(compilation: CompilationInfo): bool =
   result = compilation.invocation.okay
 
-proc pathToCompilationTarget(filename: string): string =
+proc pathToCompilationTarget*(filename: string): string =
   ## calculate the path of a source file's compiled binary output
   assert filename.endsWith ".nim"
   var (head, tail) = filename.absolutePath.normalizedPath.splitPath

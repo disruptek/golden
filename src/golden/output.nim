@@ -82,7 +82,8 @@ proc output*(golden: Golden; content: string; style: set[terminal.Style] = {}; f
   let
     flags = golden.options.flags
     fh = stdmsg()
-
+  if NeverOutput in golden.options.flags:
+    return
   if ColorConsole in flags or PipeOutput notin flags:
     fh.setStyle style
     fh.setForegroundColor fg
@@ -91,6 +92,8 @@ proc output*(golden: Golden; content: string; style: set[terminal.Style] = {}; f
 
 proc output*(golden: Golden; content: JsonNode) =
   var ugly: string
+  if NeverOutput in golden.options.flags:
+    return
   ugly.toUgly(content)
   stdout.writeLine ugly
 
@@ -110,12 +113,13 @@ proc output*(golden: Golden; output: OutputInfo; desc: string = "") =
       golden.output output.stdout, fg = fgCyan
     if output.stderr.len > 0:
       golden.output output.stderr, fg = fgRed
-    golden.output "exit code: " & $output.code
+    if output.code != 0:
+      golden.output "exit code: " & $output.code
   if jsonOutput(golden):
     golden.output output.toJson
 
 proc output*(golden: Golden; invocation: InvocationInfo; desc: string = "") =
   ## generally used to output a failed invocation
-  let message = "command-line:\n  " & invocation.commandLine
   golden.output invocation.output, desc
-  golden.output message
+  if not invocation.okay:
+    golden.output "command-line:\n  " & invocation.commandLine

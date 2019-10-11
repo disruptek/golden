@@ -173,6 +173,8 @@ proc benchmark*(golden: Golden; filename: string;
       runs.inc
       if invocation.okay:
         bench.invocations.add invocation
+        if DumpOutput in golden.options.flags:
+          golden.output invocation, "invocation"
       else:
         golden.output invocation, "failed invocation"
       secs = getTime() - wall

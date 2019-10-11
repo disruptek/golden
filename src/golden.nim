@@ -64,8 +64,8 @@ iterator performBenchmarks(golden: Golden; targets: seq[string]): Future[Benchma
         yield golden.benchmark(filename, golden.options.arguments)
 
 proc golden(sources: seq[string];
-            compilation_only: bool = false;
-            iterations: int = 0; runtime: float = 0.0;
+            compilation_only: bool = false; dump_output: bool = false;
+            iterations: int = 0; runtime: float = 0.0; never_output: bool = false;
             color_forced: bool = false; json_output: bool = false;
             interactive_forced: bool = false; graphs_in_console: bool = false;
             prune_outliers: float = 0.0; histogram_classes: int = 10;
@@ -93,6 +93,10 @@ proc golden(sources: seq[string];
     golden.options.flags.incl DryRun
   if compilation_only:
     golden.options.flags.incl CompileOnly
+  if dump_output:
+    golden.options.flags.incl DumpOutput
+  if never_output:
+    golden.options.flags.incl NeverOutput
 
   golden.options.honesty = truth
   golden.options.prune = prune_outliers
