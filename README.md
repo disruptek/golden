@@ -33,9 +33,8 @@ statistics periodically.
 If you pass it some Nim source, it will compile it for you and report some
 compilation and runtime statistics periodically.
 
-It will keep running until the standard deviation is within `truth` (think
-percentage) of mean runtime. It handles a SIGINT more gracefully than my
-ex-wife.
+By default, it will run forever. Luckily, it handles a SIGINT more gracefully
+than my ex-wife.
 
 ```
 $ golden --truth=0.002 bench.nim
@@ -96,6 +95,8 @@ $ golden --compilation openapi.nim
 ## Command Line Options
 
  - `truth` a float percentage indicating how much jitter you'll accept
+ - `runtime` a float of seconds after which we should stop the benchmark
+ - `iterations` a number of invocations after which we should stop the benchmark
  - `storage` the path to a database file you wish to use; must end in `.golden-db`
  - `interactive-forced` assume output friendly to humans
  - `json-output` assume output friendly to machines _(work in progress)_
