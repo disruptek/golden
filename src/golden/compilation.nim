@@ -86,24 +86,20 @@ proc newCompilationInfo*(filename: string; compiler: CompilerInfo = nil): Compil
   if compiler == nil:
     result.compiler.chash = waitfor result.compiler.sniffCompilerGitHash
 
-proc compileFile*(filename: string; arguments: seq[string]): Future[CompilationInfo] {.deprecated, async.} =
+proc compileFile*(filename: string; arguments: seq[string] = @[]): Future[CompilationInfo] {.async.} =
   ## compile a source file and yield details of the event
   var
-    comp = newCompilationInfo()
-    args = arguments
-  let
-    target = pathToCompilationTarget(filename)
-    compiler = comp.compiler
+    compilation = newCompilationInfo(filename)
+    # the compilation binary (the target output) is only partially built here
+    # but at least the source detail is fully built
+    args = argumentsForCompilation(arguments)
 
-  # support lazy folks
-  if arguments.len == 0:
-    args = @["c", "-d:danger"]
-  elif arguments[0] notin ["c", "cpp", "js"]:
-    args = @["c"].concat(args)
+  # add the source filename to compilation arguments
+  args.add compilation.source.path
 
-  comp.source = newFileDetailWithInfo(filename)
-  args.add comp.source.path
-  comp.invocation = await invoke(compiler.binary, args)
-  if comp.invocation.okay:
-    comp.binary = newFileDetailWithInfo(target)
-  result = comp
+  # perform the compilation
+  compilation.invocation = await invoke(compilation.compiler.binary, args)
+  if compilation.invocation.okay:
+    # populate this partially-built file detail
+    compilation.binary = newFileDetailWithInfo(compilation.binary.path)
+  result = compilation

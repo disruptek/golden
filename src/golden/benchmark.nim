@@ -223,22 +223,9 @@ iterator benchmarkNim*(golden: Golden; bench: var BenchmarkResult;
   assert CompileOnly notin golden.options.flags
   var
     future = newFuture[BenchmarkResult]()
-    compilation = newCompilationInfo(filename)
-    compiler = compilation.compiler
-    # the compilation binary (the target output) is only partially built here
-    # but at least the source detail is fully built
-    args = argumentsForCompilation(golden.options.arguments)
+    compilation = waitfor compileFile(filename, golden.options.arguments)
 
-  # add the source filename to compilation arguments
-  args.add compilation.source.path
-
-  # perform the compilation
-  compilation.invocation = waitfor invoke(compiler.binary, args)
-  if compilation.invocation.okay:
-    # populate this partially-built file detail
-    compilation.binary = newFileDetailWithInfo(compilation.binary.path)
-
-  # now the compilation is pretty solid; let's add it to the benchmark
+  # the compilation is pretty solid; let's add it to the benchmark
   bench.compilations.add compilation
   # and yield it so the user can see the compilation result
   future.complete(bench)
