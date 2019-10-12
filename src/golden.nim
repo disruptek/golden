@@ -36,8 +36,7 @@ proc storageForTargets*(golden: Golden; targets: seq[string]): string =
   elif targets.len == 1:
     result = golden.storageForTarget(targets[0])
   else:
-    # FIXME: this'll never work long-term
-    result = parentDir(targets[0]) / $targets.join("").toMD5
+    quit "specify --storage to benchmark multiple programs"
 
 proc openDatabase*(golden: Golden; targets: seq[string]): Future[GoldenDatabase] {.async.} =
   ## load a database using a filename
