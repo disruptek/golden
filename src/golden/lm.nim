@@ -9,6 +9,7 @@ import asyncdispatch
 import asyncfutures
 import strutils
 import options
+import posix
 
 import msgpack4nim
 import lmdb
@@ -21,12 +22,16 @@ import linkedlists
 
 const ISO8601forDB* = initTimeFormat "yyyy-MM-dd\'T\'HH:mm:ss\'.\'fff"
 
+const LongWayHome = true
+
 type
   GoldenDatabase* = ref object
     path: string
     store: FileInfo
     version: ModelVersion
+    env: Env
     db: LMDBEnv
+    flags: set[GoldenFlag]
 
   Storable = FileDetail
 
@@ -34,44 +39,93 @@ type
 proc isOpen(self: GoldenDatabase): bool {.inline.} = self.db != nil
 proc isClosed(self: GoldenDatabase): bool {.inline.} = self.db == nil
 
-proc close*(self: GoldenDatabase) {.async.} =
+proc close*(self: var GoldenDatabase) =
   ## close the database
-  if self.isOpen:
-    envClose(self.db)
-    self.db = nil
+  if self != nil:
+    if self.isOpen:
+      when defined(debugDoubleFree):
+        {.warning: "this build for debugging double free in database".}
+        # FIXME: free(): double free detected in tcache 2
+        envClose(self.db)
+      self.db = nil
 
-proc removeDatabase*(self: GoldenDatabase; flags: set[GoldenFlag]) {.async.} =
+proc removeDatabase*(self: var GoldenDatabase; flags: set[GoldenFlag]) =
   ## remove the database from the filesystem
-  await self.close
+  self.close
   assert self.isClosed
   if DryRun notin flags:
     if existsDir(self.path):
       removeDir(self.path)
 
-proc open(self: GoldenDatabase; path: string; readOnly: bool = false) {.async.} =
+proc open(self: var GoldenDatabase; path: string) =
   ## open the database
   assert self.isClosed
-  var flags = 0
-  if readOnly:
-    flags = RDONLY
+  var
+    flags: cuint = 0
+    #mode: Mode = umask(0) xor 0x
+    mode: Mode = S_IWUSR.Mode or S_IRUSR.Mode
+
+  if DryRun in self.flags:
+    flags = RdOnly
   else:
     if not path.existsDir:
       createDir path
   # we probably only need one, but
   # we might need as many as two for a migration
-  self.db = newLMDBEnv(path, maxdbs = 2, openflags = flags)
+
+  when LongWayHome:
+    self.env = Env()
+    self.db = addr self.env
+    assert envCreate(addr self.db) == 0
+    self.db.setMaxDBs(2)
+    assert self.db.envOpen(path.cstring, flags, mode) == 0
+  else:
+    self.db = newLMDBEnv(path, maxdbs = 2, openflags = flags.int)
+  assert self.isOpen
+
+proc newTransaction(self: GoldenDatabase): LMDBTxn =
+  assert self.isOpen
+  var flags: cuint
+  if DryRun in self.flags:
+    flags = RdOnly
+  else:
+    flags = 0
+  when LongWayHome:
+    var
+      parent: LMDBTxn
+      txn = Txn()
+    result = addr txn
+    assert parent == nil
+    assert txnBegin(self.db, parent, flags = flags, addr result) == 0
+  else:
+    result = newTxn(self.db)
+  assert result != nil
+
+proc newHandle(self: GoldenDatabase; transaction: LMDBTxn;
+               version: ModelVersion): Dbi =
+  assert self.isOpen
+  var flags: cuint
+  if DryRun in self.flags:
+    flags = 0
+  else:
+    flags = Create
+  result = dbiOpen(transaction, $ord(version), flags)
+
+proc newHandle(self: GoldenDatabase; transaction: LMDBTxn): Dbi =
+  result = self.newHandle(transaction, self.version)
 
 proc getModelVersion(self: GoldenDatabase): ModelVersion =
   assert self.isOpen
   result = ModelVersion.low
-  let transaction = newTxn(self.db)
+  let
+    transaction = self.newTransaction
   defer:
     abort(transaction)
 
   for version in countDown(ModelVersion.high, ModelVersion.low):
     try:
       # just try to open all the known versions
-      discard transaction.dbiOpen($ord(version), 0.cuint)
+      discard self.newHandle(transaction, version)
       # if we were successful, that's our version
       result = version
       break
@@ -108,46 +162,38 @@ proc fetchViaOid(transaction: LMDBTxn;
                  handle: Dbi; oid: Oid): Option[string] =
   defer:
     abort(transaction)
-  try:
-    return some(transaction.get(handle, $oid))
-  except Exception as e:
-    stdmsg().writeLine "read: " & e.msg
+  return some(transaction.get(handle, $oid))
 
-proc fetchViaOid(self: GoldenDatabase; oid: Oid): Option[string] =
+proc fetchVia*(self: GoldenDatabase; oid: Oid): Option[string] =
   assert self.isOpen
   let
-    transaction = newTxn(self.db)
-    handle = transaction.dbiOpen($ord(self.version), CREATE)
+    transaction = self.newTransaction
+    handle = self.newHandle(transaction)
   result = fetchViaOid(transaction, handle, oid)
 
 proc read*[T: Storable](self: GoldenDatabase; gold: var T) =
   assert self.isOpen
   assert not gold.dirty
-  let
-    transaction = newTxn(self.db)
-    handle = transaction.dbiOpen($ord(self.version), CREATE)
+  var
+    transaction = self.newTransaction
+    handle = self.newHandle(transaction)
   defer:
     abort(transaction)
-  try:
-    let existing = transaction.get(handle, $gold.oid)
-    unpack(existing, gold)
-    gold.dirty = false
-  except Exception as e:
-    stdmsg().writeLine "read: " & e.msg
+  let existing = transaction.get(handle, $gold.oid)
+  unpack(existing, gold)
+  gold.dirty = false
 
 proc write*[T: Storable](self: GoldenDatabase; gold: var T) =
   assert self.isOpen
   assert gold.dirty
   let
-    transaction = newTxn(self.db)
-    handle = transaction.dbiOpen($ord(self.version), CREATE)
-  try:
-    transaction.put(handle, $gold.oid, pack(gold), 0)
-    commit(transaction)
-    gold.dirty = false
-  except Exception as e:
-    stdmsg().writeLine "write: " & e.msg
+    transaction = self.newTransaction
+    handle = self.newHandle(transaction)
+  defer:
     abort(transaction)
+  transaction.put(handle, $gold.oid, pack(gold), NoOverWrite)
+  commit(transaction)
+  gold.dirty = false
 
 proc storagePath(filename: string): string =
   ## make up a good path for the database file
@@ -161,7 +207,9 @@ proc storagePath(filename: string): string =
 proc open*(filename: string; flags: set[GoldenFlag]): Future[GoldenDatabase] {.async.} =
   ## instantiate a database using the filename
   new result
+  result.db = nil
   result.path = storagePath(filename)
-  await result.open(result.path, readOnly = DryRun in flags)
+  result.flags = flags
+  result.open(result.path)
   result.version = result.upgradeDatabase()
   result.store = getFileInfo(result.path)

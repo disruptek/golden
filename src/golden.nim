@@ -2,7 +2,6 @@ import os
 import asyncfutures
 import asyncdispatch
 import strutils
-import logging
 
 import cligen
 
@@ -10,6 +9,7 @@ import golden/spec
 import golden/output
 import golden/benchmark
 import golden/running
+import golden/compilation
 
 import golden/lm as dbImpl
 
@@ -21,38 +21,46 @@ when false:
     when defined(git2SetVer):
       git.shutdown()
 
-proc storageForTargets(golden: Golden; targets: seq[string]): string =
+proc storageForTarget*(golden: Golden; target: string): string =
+  if golden.options.storage != "":
+    result = golden.options.storage
+  elif target.endsWith ".nim":
+    result = pathToCompilationTarget(target)
+  else:
+    result = target
+
+proc storageForTargets*(golden: Golden; targets: seq[string]): string =
   # see if we need to hint at a specific storage site
   if golden.options.storage != "":
     result = golden.options.storage
   elif targets.len == 1:
-    result = targets[0]
+    result = golden.storageForTarget(targets[0])
   else:
     # FIXME: this'll never work long-term
     result = parentDir(targets[0]) / $targets.join("").toMD5
 
-proc loadDatabase(golden: Golden; targets: seq[string]): Future[GoldenDatabase] {.async.} =
+proc openDatabase*(golden: Golden; targets: seq[string]): Future[GoldenDatabase] {.async.} =
   ## load a database using a filename
   let storage = golden.storageForTargets(targets)
   result = await dbImpl.open(storage, golden.options.flags)
 
-proc removeDatabase*(db: GoldenDatabase; flags: set[GoldenFlag]) {.async.} =
+proc removeDatabase*(db: var GoldenDatabase; flags: set[GoldenFlag]) =
   ## remove a database
-  await dbImpl.removeDatabase(db, flags)
+  dbImpl.removeDatabase(db, flags)
 
-proc removeDatabase*(golden: Golden; targets: seq[string]) {.async.} =
+proc removeDatabase*(golden: Golden; targets: seq[string]) =
   ## remove a database without a database handle by opening it first
-  let db = await golden.loadDatabase(targets)
-  await removeDatabase(db, golden.options.flags)
+  var db = waitfor golden.openDatabase(targets)
+  removeDatabase(db, golden.options.flags)
 
 iterator performBenchmarks(golden: Golden; targets: seq[string]): Future[BenchmarkResult] =
   var
     db: GoldenDatabase
 
-  db = waitfor golden.loadDatabase(targets)
+  db = waitfor golden.openDatabase(targets)
   # setup the db and prepare to close it down again
   defer:
-    waitfor db.close
+    dbImpl.close(db)
 
   # compile-only mode, for benchmarking the compiler
   if CompileOnly in golden.options.flags:
@@ -81,7 +89,7 @@ proc golden(sources: seq[string];
             color_forced: bool = false; json_output: bool = false;
             interactive_forced: bool = false; graphs_in_console: bool = false;
             prune_outliers: float = 0.0; histogram_classes: int = 10;
-            truth: float = 0.0; dry_run: bool = false; storage_path: string = "") =
+            truth: float = 0.0; dry_run: bool = false; storage_path: string = "") {.used.} =
   ## Nim benchmarking tool;
   ## pass 1+ .nim source files to compile and benchmark
   var
@@ -159,6 +167,7 @@ proc golden(sources: seq[string];
       golden.output e.msg
 
 when isMainModule:
+  import logging
   # log only warnings in release
   when defined(release) or defined(danger):
     let level = lvlWarn
