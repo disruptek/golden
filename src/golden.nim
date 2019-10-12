@@ -30,6 +30,7 @@ proc loadDatabase(golden: Golden; targets: seq[string]): Future[GoldenDatabase] 
   elif targets.len == 1:
     storage = targets[0]
   else:
+    # FIXME: this'll never work long-term
     storage = parentDir(targets[0]) / $targets.join("").toMD5
   result = await dbImpl.open(storage, golden.options.flags)
 
