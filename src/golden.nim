@@ -21,18 +21,29 @@ when false:
     when defined(git2SetVer):
       git.shutdown()
 
-proc loadDatabase(golden: Golden; targets: seq[string]): Future[GoldenDatabase] {.async.} =
-  ## load a database using a filename
-  var storage: string
+proc storageForTargets(golden: Golden; targets: seq[string]): string =
   # see if we need to hint at a specific storage site
   if golden.options.storage != "":
-    storage = golden.options.storage
+    result = golden.options.storage
   elif targets.len == 1:
-    storage = targets[0]
+    result = targets[0]
   else:
     # FIXME: this'll never work long-term
-    storage = parentDir(targets[0]) / $targets.join("").toMD5
+    result = parentDir(targets[0]) / $targets.join("").toMD5
+
+proc loadDatabase(golden: Golden; targets: seq[string]): Future[GoldenDatabase] {.async.} =
+  ## load a database using a filename
+  let storage = golden.storageForTargets(targets)
   result = await dbImpl.open(storage, golden.options.flags)
+
+proc removeDatabase*(db: GoldenDatabase; flags: set[GoldenFlag]) {.async.} =
+  ## remove a database
+  await dbImpl.removeDatabase(db, flags)
+
+proc removeDatabase*(golden: Golden; targets: seq[string]) {.async.} =
+  ## remove a database without a database handle by opening it first
+  let db = await golden.loadDatabase(targets)
+  await removeDatabase(db, golden.options.flags)
 
 iterator performBenchmarks(golden: Golden; targets: seq[string]): Future[BenchmarkResult] =
   var

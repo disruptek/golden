@@ -30,12 +30,27 @@ type
 
   Storable = FileDetail
 
+# these should only be used for assertions; not for export
+proc isOpen(self: GoldenDatabase): bool {.inline.} = self.db != nil
+proc isClosed(self: GoldenDatabase): bool {.inline.} = self.db == nil
+
 proc close*(self: GoldenDatabase) {.async.} =
   ## close the database
-  envClose(self.db)
+  if self.isOpen:
+    envClose(self.db)
+    self.db = nil
+
+proc removeDatabase*(self: GoldenDatabase; flags: set[GoldenFlag]) {.async.} =
+  ## remove the database from the filesystem
+  await self.close
+  assert self.isClosed
+  if DryRun notin flags:
+    if existsDir(self.path):
+      removeDir(self.path)
 
 proc open(self: GoldenDatabase; path: string; readOnly: bool = false) {.async.} =
   ## open the database
+  assert self.isClosed
   var flags = 0
   if readOnly:
     flags = RDONLY
@@ -47,6 +62,7 @@ proc open(self: GoldenDatabase; path: string; readOnly: bool = false) {.async.} 
   self.db = newLMDBEnv(path, maxdbs = 2, openflags = flags)
 
 proc getModelVersion(self: GoldenDatabase): ModelVersion =
+  assert self.isOpen
   result = ModelVersion.low
   let transaction = newTxn(self.db)
   defer:
@@ -64,7 +80,7 @@ proc getModelVersion(self: GoldenDatabase): ModelVersion =
 
 proc setModelVersion(self: GoldenDatabase; version: ModelVersion) =
   ## noop; the version is set by any write
-  return
+  assert self.isOpen
 
 proc upgradeDatabase*(self: GoldenDatabase): ModelVersion =
   result = self.getModelVersion
@@ -89,7 +105,7 @@ when false:
   let tzUTC* = newTimezone("Somewhere/UTC", utcTzInfo, utcTzInfo)
 
 proc fetchViaOid(transaction: LMDBTxn;
-                   handle: Dbi; oid: Oid): Option[string] =
+                 handle: Dbi; oid: Oid): Option[string] =
   defer:
     abort(transaction)
   try:
@@ -98,14 +114,15 @@ proc fetchViaOid(transaction: LMDBTxn;
     stdmsg().writeLine "read: " & e.msg
 
 proc fetchViaOid(self: GoldenDatabase; oid: Oid): Option[string] =
+  assert self.isOpen
   let
     transaction = newTxn(self.db)
     handle = transaction.dbiOpen($ord(self.version), CREATE)
   result = fetchViaOid(transaction, handle, oid)
 
 proc read*[T: Storable](self: GoldenDatabase; gold: var T) =
-  if not gold.dirty:
-    return
+  assert self.isOpen
+  assert not gold.dirty
   let
     transaction = newTxn(self.db)
     handle = transaction.dbiOpen($ord(self.version), CREATE)
@@ -119,8 +136,8 @@ proc read*[T: Storable](self: GoldenDatabase; gold: var T) =
     stdmsg().writeLine "read: " & e.msg
 
 proc write*[T: Storable](self: GoldenDatabase; gold: var T) =
-  if not gold.dirty:
-    return
+  assert self.isOpen
+  assert gold.dirty
   let
     transaction = newTxn(self.db)
     handle = transaction.dbiOpen($ord(self.version), CREATE)
@@ -135,6 +152,8 @@ proc write*[T: Storable](self: GoldenDatabase; gold: var T) =
 proc storagePath(filename: string): string =
   ## make up a good path for the database file
   var (head, tail) = filename.absolutePath.normalizedPath.splitPath
+  # we're gonna assume that if you are pointing to a .golden-lmdb,
+  # and you named/renamed it, that you might not want the leading `.`
   if not filename.endsWith(".golden-lmdb"):
     tail = "." & tail & ".golden-lmdb"
   result = head / tail
