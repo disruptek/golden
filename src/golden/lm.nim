@@ -1,15 +1,9 @@
-#[
-
-we're not gonna do much error checking, etc.
-
-]#
 import os
 import times
 import asyncdispatch
 import asyncfutures
 import strutils
 import options
-import posix
 
 import msgpack4nim
 import lmdb
@@ -20,18 +14,64 @@ import benchmark
 import running
 import linkedlists
 
-const ISO8601forDB* = initTimeFormat "yyyy-MM-dd\'T\'HH:mm:ss\'.\'fff"
+const
+  ISO8601forDB* = initTimeFormat "yyyy-MM-dd\'T\'HH:mm:ss\'.\'fff"
+  # we probably only need one, but
+  # we might need as many as two for a migration
+  MAXDBS = 2
 
-const LongWayHome = true
+when defined(LongWayHome):
+  import posix
+  {.warning: "long way home".}
+when defined(Heapster):
+  {.warning: "heapster".}
+
+##[
+
+Here's how the database works:
+
+There are three types of objects which have three unique forms of key.
+
+1) GoldObjects
+  - every GoldObject has an oid
+  - the stringified Oid is used as the key in this key/value store
+  - this is a 24-char string
+  - use msgpack to unpack the value into the GoldObject
+
+2) File Checksums
+  - every FileDetail has a digest representing its contents in SHA or MD5
+  - this digest is used as the key in this key/value store
+  - this is a 20-(or 16)-char string
+  - the value retrieved is the Oid of the FileDetail object
+
+  FileDetail is associated with
+    - Compilations (source or binary)
+    - Benchmarks (binary)
+    - Compilers (binary)
+    - Invocations (binary) -- currently NOT saved in the database
+
+3) Git References
+  - this is a 40-char string
+
+To get data from the database, you start with any of these three keys, which
+gives you your entry. This seems like an extra step, but the fact is, the data
+is useless if you cannot associate it to something you have in-hand, and so you
+are simply going to end up gathering that content anyway in order to confirm
+that it matches a value in the database.
+
+]##
 
 type
   GoldenDatabase* = ref object
     path: string
     store: FileInfo
     version: ModelVersion
-    env: Env
     db: LMDBEnv
     flags: set[GoldenFlag]
+    when defined(Heapster):
+      ## this won't help
+      #env: ref Env
+      #txn: ref Txn
 
   Storable = FileDetail
 
@@ -43,44 +83,95 @@ proc close*(self: var GoldenDatabase) =
   ## close the database
   if self != nil:
     if self.isOpen:
-      when defined(debugDoubleFree):
-        {.warning: "this build for debugging double free in database".}
-        # FIXME: free(): double free detected in tcache 2
+      when defined(LongWayHome):
+        goldenDebug()
+        when defined(debug):
+          echo "OLD CLOSE"
         envClose(self.db)
+        when defined(debug):
+          echo "OLD CLOSE complete"
+      else:
+        echo "NO CLOSE"
+      when defined(Heapster):
+        when compiles(self.env):
+          echo "HEAPSTER env to nil"
+          self.env = nil
+      # XXX: without setting this to nil, it crashes after a few
+      #      iterations...  but why?
       self.db = nil
+
+proc removeStorage(path: string) =
+  if existsDir(path):
+    removeDir(path)
+  assert not existsDir(path)
+
+proc createStorage(path: string) =
+  if existsDir(path):
+    return
+  createDir(path)
+  assert existsDir(path)
 
 proc removeDatabase*(self: var GoldenDatabase; flags: set[GoldenFlag]) =
   ## remove the database from the filesystem
   self.close
   assert self.isClosed
   if DryRun notin flags:
-    if existsDir(self.path):
-      removeDir(self.path)
+    removeStorage(self.path)
+
+proc umaskFriendlyPerms*(executable: bool): Mode =
+  ## compute permissions for new files which are sensitive to umask
+  var mode: Mode
+
+  # set it to 0 but read the last value
+  result = umask(0)
+  # set it to that value and discard zero
+  discard umask(result)
+
+  if executable:
+    result = S_IWUSR.Mode or S_IRUSR.Mode or S_IXUSR.Mode or (0o777 xor result)
+  else:
+    result = S_IWUSR.Mode or S_IRUSR.Mode or (0o666 xor result)
 
 proc open(self: var GoldenDatabase; path: string) =
   ## open the database
   assert self.isClosed
-  var
-    flags: cuint = 0
-    #mode: Mode = umask(0) xor 0x
-    mode: Mode = S_IWUSR.Mode or S_IRUSR.Mode
+  when defined(LongWayHome):
+    var
+      flags: cuint = 0
+  else:
+    var
+      flags: int = 0
 
   if DryRun in self.flags:
     flags = RdOnly
   else:
-    if not path.existsDir:
-      createDir path
-  # we probably only need one, but
-  # we might need as many as two for a migration
-
-  when LongWayHome:
-    self.env = Env()
-    self.db = addr self.env
+    flags = 0
+    createStorage(path)
+  when defined(LongWayHome):
+    when defined(debug):
+      echo "OPEN DB"
+    let mode = umaskFriendlyPerms(executable = false)
+    when defined(Heapster):
+      proc heapEnv(): ref Env =
+        echo "HEAPSTER heap env"
+        new result
+      when compiles(self.env):
+        self.env = heapEnv()
+        GC_ref(self.env)
+        self.db = addr self.env[]
+      else:
+        var env = heapEnv()
+        GC_ref(env)
+        self.db = addr env[]
+    else:
+      var e = Env()
+      self.db = addr e
     assert envCreate(addr self.db) == 0
-    self.db.setMaxDBs(2)
+    self.db.setMaxDBs(MAXDBS)
     assert self.db.envOpen(path.cstring, flags, mode) == 0
   else:
-    self.db = newLMDBEnv(path, maxdbs = 2, openflags = flags.int)
+    self.db = newLMDBEnv(path, maxdbs = MAXDBS, openflags = flags)
+  goldenDebug()
   assert self.isOpen
 
 proc newTransaction(self: GoldenDatabase): LMDBTxn =
@@ -90,14 +181,34 @@ proc newTransaction(self: GoldenDatabase): LMDBTxn =
     flags = RdOnly
   else:
     flags = 0
-  when LongWayHome:
+  #
+  # i'm labelling this with the `when` simply so i can mark this as another
+  # area where a memory change for LongWayHome may end up being relevant
+  when true or defined(LongWayHome):
     var
       parent: LMDBTxn
-      txn = Txn()
-    result = addr txn
+
+    when defined(Heapster):
+      proc heapTxn(): ref Txn =
+        echo "HEAPSTER heap txn"
+        new result
+
+      when compiles(self.txn):
+        self.txn = heapTxn()
+        GC_ref(self.txn)
+        result = addr self.txn[]
+      else:
+        var txn = heapTxn()
+        GC_ref(txn)
+        result = addr txn[]
+    else:
+      var txn = Txn()
+      result = addr txn
     assert parent == nil
     assert txnBegin(self.db, parent, flags = flags, addr result) == 0
   else:
+    # but, we cannot use this with DryRun, so it's an error to try
+    {.error: "this build doesn't work with DryRun".}
     result = newTxn(self.db)
   assert result != nil
 
@@ -189,11 +300,13 @@ proc write*[T: Storable](self: GoldenDatabase; gold: var T) =
   let
     transaction = self.newTransaction
     handle = self.newHandle(transaction)
-  defer:
+  try:
+    transaction.put(handle, $gold.oid, pack(gold), NoOverWrite)
+    commit(transaction)
+    gold.dirty = false
+  except Exception as e:
     abort(transaction)
-  transaction.put(handle, $gold.oid, pack(gold), NoOverWrite)
-  commit(transaction)
-  gold.dirty = false
+    raise e
 
 proc storagePath(filename: string): string =
   ## make up a good path for the database file
