@@ -91,10 +91,12 @@ proc close*(self: var GoldenDatabase) =
         when defined(debug):
           echo "OLD CLOSE complete"
       else:
-        echo "NO CLOSE"
+        when defined(debug):
+          echo "NO CLOSE"
       when defined(Heapster):
         when compiles(self.env):
-          echo "HEAPSTER env to nil"
+          when defined(debug):
+            echo "HEAPSTER env to nil"
           self.env = nil
       # XXX: without setting this to nil, it crashes after a few
       #      iterations...  but why?
@@ -153,7 +155,8 @@ proc open(self: var GoldenDatabase; path: string) =
     let mode = umaskFriendlyPerms(executable = false)
     when defined(Heapster):
       proc heapEnv(): ref Env =
-        echo "HEAPSTER heap env"
+        when defined(debug):
+          echo "HEAPSTER heap env"
         new result
       when compiles(self.env):
         self.env = heapEnv()
@@ -190,7 +193,8 @@ proc newTransaction(self: GoldenDatabase): LMDBTxn =
 
     when defined(Heapster):
       proc heapTxn(): ref Txn =
-        echo "HEAPSTER heap txn"
+        when defined(debug):
+          echo "HEAPSTER heap txn"
         new result
 
       when compiles(self.txn):
