@@ -118,8 +118,13 @@ proc output*(golden: Golden; output: OutputInfo; desc: string = "") =
   if jsonOutput(golden):
     golden.output output.toJson
 
-proc output*(golden: Golden; invocation: InvocationInfo; desc: string = "") =
+proc output*(golden: Golden; invocation: InvocationInfo; desc: string = "";
+             arguments: seq[string] = @[]) =
   ## generally used to output a failed invocation
   golden.output invocation.output, desc
   if not invocation.okay:
+    new invocation.arguments
+    for n in arguments:
+      invocation.arguments[].add n
     golden.output "command-line:\n  " & invocation.commandLine
+    invocation.arguments = nil

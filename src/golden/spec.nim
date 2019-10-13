@@ -5,15 +5,18 @@ basic types and operations likely shared by all modules
 ]#
 import os
 import times
-import md5
 import oids
 import strutils
 import terminal
 
+when defined(useSHA):
+  import std/sha1
+else:
+  import md5
+
 import msgpack4nim
 
 export oids
-export md5
 export times
 
 const
@@ -23,7 +26,7 @@ const
 type
   BenchmarkusInterruptus* = IOError
 
-  Sync* {.pure.} = enum
+  Sync* {.deprecated,pure.} = enum
     Okay
     Read
     Write
@@ -68,7 +71,7 @@ type
 
   InvocationInfo* = ref object of GoldObject
     binary*: FileDetail
-    arguments*: seq[string]
+    arguments*: ref seq[string]
     runtime*: RuntimeInfo
     output*: OutputInfo
 
@@ -106,14 +109,24 @@ method init*(gold: GoldObject; text: string) {.base.} =
 
 proc digestOfFileContents(path: string): string =
   assert path.fileExists
-  let data = readFile(path)
-  result = $data.toMD5
+  when defined(useSHA):
+    result = $secureHashFile(path)
+  else:
+    let data = readFile(path)
+    result = $toMD5(data)
+
+proc digestOf*(content: string): string =
+  when defined(useSHA):
+    result = $secureHash(content)
+  else:
+    result = $toMD5(content)
 
 proc commandLine*(invocation: InvocationInfo): string =
   ## compose the full commandLine for the given invocation
   result = invocation.binary.path
-  if invocation.arguments.len > 0:
-    result &= " " & invocation.arguments.join(" ")
+  if invocation.arguments != nil:
+    if invocation.arguments[].len > 0:
+      result &= " " & invocation.arguments[].join(" ")
 
 template okay*(invocation: InvocationInfo): bool =
   ## was the invocation successful?
@@ -156,7 +169,7 @@ proc newOutputInfo*(): OutputInfo =
   new result
   result.init "output"
 
-proc init*(invocation: var InvocationInfo; binary: FileDetail; args: seq[string] = @[]) =
+proc init*(invocation: var InvocationInfo; binary: FileDetail; args: ref seq[string]) =
   invocation.binary = binary
   invocation.arguments = args
   invocation.output = newOutputInfo()
@@ -166,7 +179,7 @@ proc newInvocationInfo*(): InvocationInfo =
   new result
   procCall result.GoldObject.init "invoked"
 
-proc newInvocationInfo*(binary: FileDetail; args: seq[string] = @[]): InvocationInfo =
+proc newInvocationInfo*(binary: FileDetail; args: ref seq[string]): InvocationInfo =
   result = newInvocationInfo()
   result.init(binary, args = args)
 
@@ -219,6 +232,14 @@ proc pack_type*[ByteStream](s: ByteStream; x: Oid) =
   s.pack($x)
 
 proc unpack_type*[ByteStream](s: ByteStream; x: var Oid) =
+  var oid: string
+  s.unpack_type(oid)
+  x = parseOid(oid)
+
+proc pack_type*[ByteStream](s: ByteStream; x: GoldObject) =
+  s.pack($x)
+
+proc unpack_type*[ByteStream](s: ByteStream; x: var GoldObject) =
   var oid: string
   s.unpack_type(oid)
   x = parseOid(oid)
@@ -288,3 +309,12 @@ proc unpack_type*[ByteStream](s: ByteStream; x: var InvocationInfo) =
   else:
     s.unpack_type(x.invocation.runtime)
 ]#
+
+template goldenDebug*() =
+  when defined(debug):
+    when defined(nimTypeNames):
+      dumpNumberOfInstances()
+    stdmsg().writeLine "total: " & $getTotalMem()
+    stdmsg().writeLine " free: " & $getFreeMem()
+    stdmsg().writeLine "owned: " & $getOccupiedMem()
+    stdmsg().writeLine "  max: " & $getMaxMem()

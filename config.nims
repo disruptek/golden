@@ -17,3 +17,11 @@ switch("define", "git2DL")
 #define:git2Static
 
 switch("define", "plotGraphs")
+
+switch("define", "useSHA")
+
+#switch("define", "debug")
+#switch("define", "nimTypeNames")
+#switch("define", "useGcAssert")
+switch("define", "LongWayHome")
+#switch("define", "Heapster")

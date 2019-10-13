@@ -55,6 +55,8 @@ proc output*(golden: Golden; benchmark: BenchmarkResult; desc: string = "") =
       golden.output benchmark.compilations, "Builds"
   else:
     golden.output benchmark.invocations, "Runs"
+  when defined(debug):
+    goldenDebug()
   when defined(plotGraphs):
     while ConsoleGraphs in golden.options.flags:
       var
@@ -149,7 +151,7 @@ proc appearsBenchmarkable*(path: string): bool =
     return false
 
 proc benchmark*(golden: Golden; filename: string;
-                args: seq[string]): Future[BenchmarkResult] {.async.} =
+                arguments: seq[string]): Future[BenchmarkResult] {.async.} =
   ## benchmark an arbitrary executable
   let
     target = newFileDetailWithInfo(filename)
@@ -169,14 +171,14 @@ proc benchmark*(golden: Golden; filename: string;
         {.warning: "this build is for debugging fd leak".}
         invocation = await invoke("/usr/bin/lsof", "-p", getCurrentProcessId())
         golden.output invocation.output.stdout
-      invocation = await invoke(target, args)
+      invocation = await invoke(target, arguments)
       runs.inc
       if invocation.okay:
         bench.invocations.add invocation
         if DumpOutput in golden.options.flags:
-          golden.output invocation, "invocation"
+          golden.output invocation, "invocation", arguments = arguments
       else:
-        golden.output invocation, "failed invocation"
+        golden.output invocation, "failed invocation", arguments = arguments
       secs = getTime() - wall
       truthy = bench.invocations.truthy(golden.options.honesty)
       if RunLimit in golden.options.flags:
