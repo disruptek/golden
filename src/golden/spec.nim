@@ -26,12 +26,6 @@ const
 type
   BenchmarkusInterruptus* = IOError
 
-  Sync* {.deprecated,pure.} = enum
-    Okay
-    Read
-    Write
-    Error
-
   ModelVersion* = enum
     v0 = "(none)"
     v1 = "dragons; really alpha"
