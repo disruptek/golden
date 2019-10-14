@@ -9,6 +9,8 @@ import golden/lm
 
 proc quiesceMemory(message: string): int =
   GC_fullCollect()
+  when defined(debug):
+    echo GC_getStatistics()
   result = getOccupiedMem()
 
 suite "database":
