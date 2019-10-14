@@ -122,7 +122,6 @@ proc removeDatabase*(self: var GoldenDatabase; flags: set[GoldenFlag]) =
 
 proc umaskFriendlyPerms*(executable: bool): Mode =
   ## compute permissions for new files which are sensitive to umask
-  var mode: Mode
 
   # set it to 0 but read the last value
   result = umask(0)
