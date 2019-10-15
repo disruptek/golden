@@ -10,8 +10,8 @@ import lmdb
 
 import fsm
 import spec
-import benchmark
-import running
+#import benchmark
+#import running
 import linkedlists
 
 const
@@ -32,11 +32,11 @@ Here's how the database works:
 
 There are three types of objects which have three unique forms of key.
 
-1) GoldObjects
-  - every GoldObject has an oid
+1) Gold objects
+  - every Gold has an oid
   - the stringified Oid is used as the key in this key/value store
   - this is a 24-char string
-  - use msgpack to unpack the value into the GoldObject
+  - use msgpack to unpack the value into the Gold object
 
 2) File Checksums
   - every FileDetail has a digest representing its contents in SHA or MD5
@@ -72,8 +72,6 @@ type
       ## this won't help
       #env: ref Env
       #txn: ref Txn
-
-  Storable = FileDetail
 
 # these should only be used for assertions; not for export
 proc isOpen(self: GoldenDatabase): bool {.inline.} = self.db != nil
@@ -285,7 +283,7 @@ proc fetchVia*(self: GoldenDatabase; oid: Oid): Option[string] =
     handle = self.newHandle(transaction)
   result = fetchViaOid(transaction, handle, oid)
 
-proc read*[T: Storable](self: GoldenDatabase; gold: var T) =
+proc read*(self: GoldenDatabase; gold: var Gold) =
   assert self.isOpen
   assert not gold.dirty
   var
@@ -297,7 +295,7 @@ proc read*[T: Storable](self: GoldenDatabase; gold: var T) =
   unpack(existing, gold)
   gold.dirty = false
 
-proc write*[T: Storable](self: GoldenDatabase; gold: var T) =
+proc write*(self: GoldenDatabase; gold: var Gold) =
   assert self.isOpen
   assert gold.dirty
   let

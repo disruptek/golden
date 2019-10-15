@@ -8,6 +8,9 @@ import times
 import oids
 import strutils
 import terminal
+import stats
+import lists
+import json
 
 when defined(useSHA):
   import std/sha1
@@ -15,6 +18,8 @@ else:
   import md5
 
 import msgpack4nim
+
+import running
 
 export oids
 export times
@@ -34,15 +39,45 @@ type
     Upgrade
     Downgrade
 
-  GoldObject* = ref object of RootObj
+  # ordinal value is used as a magic number!
+  GoldKind* = enum
+    aFile = "📂"
+    aRuntime = "⏱️"
+    anOutput = "📢"
+    aCompiler = "🧰"
+    aCompilation = "🎯"
+    anInvocation = "🎽"
+    aBenchmark = "🏁"
+    #aPackageOfCourse = "📦"
+    #aTestHaHa = "🧪"
+    #aRocketDuh = "🚀"
+    #aLinkerGetIt = "🔗"
+
+  Gold* = ref object
     oid*: Oid
     name*: string
     description*: string
-    entry*: DateTime
+    when defined(StoreEntry):
+      entry*: DateTime
     dirty*: bool
+    case kind*: GoldKind
+    of aFile:
+      file*: FileDetail
+    of aRuntime:
+      runtime*: RuntimeInfo
+    of anOutput:
+      output*: OutputInfo
+    of aCompiler:
+      compiler*: CompilerInfo
+    of aCompilation:
+      compilation*: CompilationInfo
+    of anInvocation:
+      invocation*: InvocationInfo
+    of aBenchmark:
+      benchmark*: BenchmarkResult
 
   FileSize* = BiggestInt
-  FileDetail* = ref object of GoldObject
+  FileDetail* = ref object
     digest*: string
     size*: FileSize
     path*: string
@@ -53,21 +88,40 @@ type
   CpuDuration* = float64
   MemorySize* = int
 
-  RuntimeInfo* = ref object of GoldObject
+  RuntimeInfo* = ref object
     wall*: WallDuration
     cpu*: CpuDuration
     memory*: MemorySize
 
-  OutputInfo* = ref object of GoldObject
+  OutputInfo* = ref object
     code*: int
     stdout*: string
     stderr*: string
 
-  InvocationInfo* = ref object of GoldObject
-    binary*: FileDetail
+  InvocationInfo* = ref object
+    binary*: Gold
     arguments*: ref seq[string]
     runtime*: RuntimeInfo
     output*: OutputInfo
+
+  CompilerInfo* = ref object
+    binary*: Gold
+    version*: string
+    major*: int
+    minor*: int
+    patch*: int
+    chash*: string
+
+  CompilationInfo* = ref object
+    compiler*: Gold
+    invocation*: Gold
+    source*: Gold
+    binary*: Gold
+
+  BenchmarkResult* = ref object
+    binary*: Gold
+    compilations*: RunningResult[Gold]
+    invocations*: RunningResult[Gold]
 
   GoldenFlag* = enum
     Interactive
@@ -91,23 +145,27 @@ type
     timeLimit*: float
     runLimit*: int
 
-  Golden* = ref object of GoldObject
+  Golden* = object
     options*: GoldenOptions
 
-method init*(gold: GoldObject; text: string) {.base.} =
-  gold.oid = genOid()
-  gold.name = text
-  gold.entry = now()
-  assert text.len <= 16
-  gold.dirty = true
+proc created*(gold: Gold): Time {.inline.} =
+  ## when the object was originally created
+  gold.oid.generatedTime
 
-proc digestOfFileContents(path: string): string =
-  assert path.fileExists
-  when defined(useSHA):
-    result = $secureHashFile(path)
+proc newGold*(kind: GoldKind): Gold =
+  when defined(StoreEntry):
+    result = Gold(kind: kind, oid: genOid(), entry: now(), dirty: true)
   else:
-    let data = readFile(path)
-    result = $toMD5(data)
+    result = Gold(kind: kind, oid: genOid(), dirty: true)
+
+when defined(StoreEntry):
+  proc newGold(kind: GoldKind; oid: Oid; entry: DateTime): Gold =
+    ## prep a new Gold object for database paint
+    result = Gold(kind: kind, oid: oid, entry: entry, dirty: false)
+else:
+  proc newGold(kind: GoldKind; oid: Oid): Gold =
+    ## prep a new Gold object for database paint
+    result = Gold(kind: kind, oid: oid, dirty: false)
 
 proc digestOf*(content: string): string =
   when defined(useSHA):
@@ -115,44 +173,52 @@ proc digestOf*(content: string): string =
   else:
     result = $toMD5(content)
 
+proc digestOfFileContents(path: string): string =
+  assert path.fileExists
+  when defined(useSHA):
+    result = $secureHashFile(path)
+  else:
+    result = digestOf(readFile(path))
+
 proc commandLine*(invocation: InvocationInfo): string =
   ## compose the full commandLine for the given invocation
-  result = invocation.binary.path
+  result = invocation.binary.file.path
   if invocation.arguments != nil:
     if invocation.arguments[].len > 0:
       result &= " " & invocation.arguments[].join(" ")
 
-template okay*(invocation: InvocationInfo): bool =
-  ## was the invocation successful?
-  invocation.output.code == 0
+proc okay*(gold: Gold): bool =
+  case gold.kind:
+  of aCompilation:
+    result = gold.compilation.invocation.okay
+  of anInvocation:
+    result = gold.invocation.output.code == 0
+  else:
+    raise newException(Defect, "nonsensical")
 
 proc newRuntimeInfo*(): RuntimeInfo =
   new result
-  result.init "runtime"
 
-proc newFileDetail*(path: string): FileDetail =
-  new result
-  result.init "file"
-  result.path = path
+proc newFileDetail*(path: string): Gold =
+  result = newGold(aFile)
+  result.file = FileDetail(path: path)
 
-proc newFileDetail*(path: string; size: FileSize; digest: string): FileDetail =
+proc newFileDetail*(path: string; size: FileSize; digest: string): Gold =
   result = newFileDetail(path)
-  result.size = size
-  result.digest = digest
+  result.file.size = size
+  result.file.digest = digest
 
-proc newFileDetail*(path: string; info: FileInfo): FileDetail =
+proc newFileDetail*(path: string; info: FileInfo): Gold =
   let normal = path.absolutePath.normalizedPath
   result = newFileDetail(normal, info.size, digestOfFileContents(normal))
-  result.mtime = info.lastWriteTime
-  result.kind = info.kind
+  result.file.mtime = info.lastWriteTime
+  result.file.kind = info.kind
 
-proc newFileDetailWithInfo*(path: string): FileDetail =
+proc newFileDetailWithInfo*(path: string): Gold =
   assert path.fileExists, "path `" & path & "` does not exist"
   result = newFileDetail(path, getFileInfo(path))
 
 proc newGolden*(): Golden =
-  new result
-  result.init "golden"
   if stdmsg().isatty:
     result.options.flags.incl Interactive
     result.options.flags.incl ColorConsole
@@ -161,19 +227,29 @@ proc newGolden*(): Golden =
 
 proc newOutputInfo*(): OutputInfo =
   new result
-  result.init "output"
 
-proc init*(invocation: var InvocationInfo; binary: FileDetail; args: ref seq[string]) =
-  invocation.binary = binary
-  invocation.arguments = args
-  invocation.output = newOutputInfo()
-  invocation.runtime = newRuntimeInfo()
+proc `binary=`*(gold: var Gold; file: Gold) =
+  assert file.kind == aFile
+  gold.binary = file
 
-proc newInvocationInfo*(): InvocationInfo =
-  new result
-  procCall result.GoldObject.init "invoked"
+proc `source=`*(gold: var Gold; file: Gold) =
+  assert file.kind == aFile
+  gold.source = file
 
-proc newInvocationInfo*(binary: FileDetail; args: ref seq[string]): InvocationInfo =
+proc init*(gold: var Gold; binary: Gold; args: ref seq[string]) =
+  assert gold.kind == anInvocation
+  assert binary.kind == aFile
+  gold.invocation = InvocationInfo()
+  gold.invocation.binary = binary
+  gold.invocation.arguments = args
+  gold.invocation.output = newOutputInfo()
+  gold.invocation.runtime = newRuntimeInfo()
+
+proc newInvocationInfo*(): Gold =
+  result = newGold(anInvocation)
+  result.invocation = InvocationInfo()
+
+proc newInvocationInfo*(binary: Gold; args: ref seq[string]): Gold =
   result = newInvocationInfo()
   result.init(binary, args = args)
 
@@ -181,18 +257,19 @@ proc fibonacci*(x: int): int =
   result = if x <= 2: 1
   else: fibonacci(x - 1) + fibonacci(x - 2)
 
-proc pack_type*[ByteStream](s: ByteStream; x: DateTime) =
-  s.pack(x.inZone(local()).format(ISO8601noTZ))
+proc pack_type*[ByteStream](s: ByteStream; x: GoldKind) =
+  let v = cast[char](ord(x))
+  s.pack(v)
 
-proc unpack_type*[ByteStream](s: ByteStream; x: var DateTime) =
-  var datetime: string
-  s.unpack_type(datetime)
-  x = datetime.parse(ISO8601noTZ).inZone(local())
+proc unpack_type*[ByteStream](s: ByteStream; x: var GoldKind) =
+  var v: char
+  s.unpack_type(v)
+  x = cast[GoldKind](v)
 
-proc pack_type*[ByteStream](s: ByteStream; x: Timezone) =
+proc pack_type*[ByteStream](s: ByteStream; x: Timezone) {.deprecated.} =
   s.pack(x.name)
 
-proc unpack_type*[ByteStream](s: ByteStream; x: var Timezone) =
+proc unpack_type*[ByteStream](s: ByteStream; x: var Timezone) {.deprecated.} =
   s.unpack_type(x.name)
   case x.name:
   of "LOCAL":
@@ -222,6 +299,14 @@ proc unpack_type*[ByteStream](s: ByteStream; x: var Time) =
   s.unpack_type(nanos)
   x = initTime(unix, nanos)
 
+proc pack_type*[ByteStream](s: ByteStream; x: DateTime) =
+  s.pack(x.toTime)
+
+proc unpack_type*[ByteStream](s: ByteStream; x: var DateTime) =
+  var t: Time
+  s.unpack_type(t)
+  x = t.inZone(local())
+
 proc pack_type*[ByteStream](s: ByteStream; x: Oid) =
   s.pack($x)
 
@@ -230,17 +315,7 @@ proc unpack_type*[ByteStream](s: ByteStream; x: var Oid) =
   s.unpack_type(oid)
   x = parseOid(oid)
 
-proc pack_type*[ByteStream](s: ByteStream; x: GoldObject) =
-  s.pack($x)
-
-proc unpack_type*[ByteStream](s: ByteStream; x: var GoldObject) =
-  var oid: string
-  s.unpack_type(oid)
-  x = parseOid(oid)
-
 proc pack_type*[ByteStream](s: ByteStream; x: FileDetail) =
-  s.pack(x.oid)
-  s.pack(x.entry)
   s.pack(x.digest)
   s.pack(x.size)
   s.pack(x.path)
@@ -248,13 +323,40 @@ proc pack_type*[ByteStream](s: ByteStream; x: FileDetail) =
   s.pack(x.mtime)
 
 proc unpack_type*[ByteStream](s: ByteStream; x: var FileDetail) =
-  s.unpack_type(x.oid)
-  s.unpack_type(x.entry)
   s.unpack_type(x.digest)
   s.unpack_type(x.size)
   s.unpack_type(x.path)
   s.unpack_type(x.kind)
   s.unpack_type(x.mtime)
+
+proc pack_type*[ByteStream](s: ByteStream; x: Gold) =
+  s.pack(x.kind)
+  s.pack(x.oid)
+  #s.pack(x.entry)
+  case x.kind:
+  of aFile:
+    s.pack(x.file)
+  else:
+    raise newException(Defect, "unsupported")
+
+proc unpack_type*[ByteStream](s: ByteStream; gold: var Gold) =
+  var
+    oid: string
+    kind: GoldKind
+  s.unpack_type(kind)
+  s.unpack_type(oid)
+  when defined(StoreEntry):
+    var entry: DateTime
+    s.unpack_type(entry)
+    gold = newGold(kind, oid = parseOid(oid), entry = entry)
+  else:
+    gold = newGold(kind, oid = parseOid(oid))
+  case kind:
+  of aFile:
+    new gold.file
+    s.unpack_type(gold.file)
+  else:
+    raise newException(Defect, "unsupported")
 
 #[
 proc pack_type*[ByteStream](s: ByteStream; x: CompilationInfo) =
@@ -304,6 +406,65 @@ proc unpack_type*[ByteStream](s: ByteStream; x: var InvocationInfo) =
     s.unpack_type(x.invocation.runtime)
 ]#
 
+proc toJson*(entry: DateTime): JsonNode =
+  result = newJString entry.format(ISO8601noTZ)
+
+proc toJson*(gold: Gold): JsonNode =
+  result = %* {
+    "oid": newJString $gold.oid,
+    "name": newJString gold.name,
+    "description": newJString gold.description,
+  }
+  when defined(StoreEntry):
+    result["entry"] = gold.entry.toJson
+
+proc jsonOutput*(golden: Golden): bool =
+  let flags = golden.options.flags
+  result = PipeOutput in flags or Interactive notin flags
+
+proc add*[T: InvocationInfo](running: RunningResult[T]; value: T) =
+  ## for stats, pull out the invocation duration from invocation info
+  let seconds = value.runtime.wall.toSeconds
+  running.list.append value
+  running.stat.push seconds
+
+proc add*[T: Gold](running: RunningResult[T]; value: T) =
+  ## for stats, pull out the invocation duration from invocation info
+  var v: StatValue
+  case value.kind:
+  of aCompilation:
+    v = value.compilation.invocation.invocation.runtime.wall.toSeconds
+  of anInvocation:
+    v = value.invocation.runtime.wall.toSeconds
+  else:
+    raise newException(Defect, "nonsense")
+  running.list.append value
+  running.stat.push v
+
+proc reset*[T: InvocationInfo](running: RunningResult[T]) =
+  running.stat.clear
+  var stat: seq[StatValue]
+  for invocation in running.list.items:
+    stat.add invocation.runtime.stat.toSeconds
+  running.stat.push stat
+
+proc add*[T: CompilationInfo](running: RunningResult[T]; value: T) =
+  ## for stats, pull out the invocation duration from compilation info
+  running.list.append value
+  running.stat.push value.invocation.runtime.wall.toSeconds
+
+proc pack_type*[ByteStream](s: ByteStream; x: RunningResult[CompilationInfo]) =
+  s.pack_type(x.oid)
+  s.pack_type(x.entry)
+  s.pack_type(x.list)
+  s.pack_type(x.wall)
+
+proc unpack_type*[ByteStream](s: ByteStream; x: var RunningResult[CompilationInfo]) =
+  s.unpack_type(x.oid)
+  s.unpack_type(x.entry)
+  s.unpack_type(x.list)
+  s.unpack_type(x.wall)
+
 template goldenDebug*() =
   when defined(debug):
     when defined(nimTypeNames):
@@ -312,3 +473,26 @@ template goldenDebug*() =
     stdmsg().writeLine " free: " & $getFreeMem()
     stdmsg().writeLine "owned: " & $getOccupiedMem()
     stdmsg().writeLine "  max: " & $getMaxMem()
+
+include output
+
+proc toWallDuration*(gold: Gold): Duration =
+  case gold.kind:
+  of anInvocation:
+    result = gold.invocation.runtime.wall
+  of aCompilation:
+    result = gold.compilation.invocation.invocation.runtime.wall
+  else:
+    raise newException(Defect, "nonsense")
+
+proc toStatValue*(gold: Gold): StatValue =
+  case gold.kind:
+  of anInvocation:
+    result = gold.toWallDuration.toSeconds
+  of aCompilation:
+    result = gold.toWallDuration.toSeconds
+  else:
+    raise newException(Defect, "nonsense")
+
+proc output*(golden: Golden; running: RunningResult; desc: string = "") =
+  golden.output running.renderTable(desc)

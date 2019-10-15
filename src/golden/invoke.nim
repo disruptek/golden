@@ -10,6 +10,12 @@ import foreach
 
 import spec
 
+type
+  Monitor = enum
+    Output = "the process has some data for us on stdout"
+    Errors = "the process has some data for us on stderr"
+    Finished = "the process has finished"
+
 proc drainStreamInto(stream: Stream; output: var string) =
   while not stream.atEnd:
     output &= stream.readChar
@@ -26,12 +32,6 @@ proc drain(ready: ReadyKey; stream: Stream; output: var string) =
 proc monitor(process: Process; invocation: var InvocationInfo) =
   ## keep a process's output streams empty, saving them into the
   ## invocation with other runtime details
-  type
-    Monitor = enum
-      Output = "the process has some data for us on stdout"
-      Errors = "the process has some data for us on stderr"
-      Finished = "the process has finished"
-
   var
     clock = getTime()
     watcher = newSelector[Monitor]()
@@ -84,24 +84,24 @@ proc monitor(process: Process; invocation: var InvocationInfo) =
   # the process has exited, but this could be useful to Process
   invocation.output.code = process.waitForExit
 
-proc invoke*(binary: FileDetail, args: seq[string] = @[]): Future[InvocationInfo] {.async.} =
+proc invoke*(binary: Gold, args: seq[string] = @[]): Future[Gold] {.async.} =
   ## run a binary and yield info about its invocation
   var
-    invocation = newInvocationInfo(binary, args = nil)
-    process = startProcess(binary.path, args = args, options = {})
+    gold = newInvocationInfo(binary, args = nil)
+    process = startProcess(binary.file.path, args = args, options = {})
 
   # watch the process to gather i/o and runtime details
-  process.monitor(invocation)
+  process.monitor(gold.invocation)
   # cleanup the process
   process.close
 
-  result = invocation
+  result = gold
 
-proc invoke*(path: string; args: varargs[string, `$`]): Future[InvocationInfo] =
+proc invoke*(path: string; args: varargs[string, `$`]): Future[Gold] =
   ## convenience invoke()
   var
     arguments: seq[string]
     binary = newFileDetailWithInfo(path)
-  for a in args:
+  for a in args.items:
     arguments.add a
   result = binary.invoke(arguments)

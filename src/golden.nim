@@ -6,7 +6,6 @@ import strutils
 import cligen
 
 import golden/spec
-import golden/output
 import golden/benchmark
 import golden/running
 import golden/compilation
@@ -20,6 +19,27 @@ when false:
   proc shutdown(golden: Golden) {.async.} =
     when defined(git2SetVer):
       git.shutdown()
+
+proc `$`*(gold: Gold): string =
+  case gold.kind:
+  of aCompiler:
+    result = $gold.compiler
+  of anInvocation:
+    result = $gold.invocation
+  of aBenchmark:
+    result = $gold.benchmark
+  of aFile:
+    result = $gold.file
+  else:
+    result = gold.name & ":" & $gold.oid & " entry " & $gold.created
+
+proc output*(golden: Golden; gold: Gold; desc: string = "") =
+  if desc != "":
+    gold.description = desc
+  if Interactive in golden.options.flags:
+    golden.output $gold
+  if jsonOutput(golden):
+    golden.output gold.toJson
 
 proc storageForTarget*(golden: Golden; target: string): string =
   if golden.options.storage != "":
@@ -52,7 +72,7 @@ proc removeDatabase*(golden: Golden; targets: seq[string]) =
   var db = waitfor golden.openDatabase(targets)
   removeDatabase(db, golden.options.flags)
 
-iterator performBenchmarks(golden: Golden; targets: seq[string]): Future[BenchmarkResult] =
+iterator performBenchmarks(golden: Golden; targets: seq[string]): Future[Gold] =
   var
     db: GoldenDatabase
 
@@ -151,15 +171,17 @@ proc golden(sources: seq[string];
       raise newException(BenchmarkusInterruptus, "")
     setControlCHook(sigInt)
 
-  for bench in golden.performBenchmarks(targets):
+  for b in golden.performBenchmarks(targets):
     try:
-      let mark = waitfor bench
+      let
+        mark = waitfor b
+        bench = mark.benchmark
       # output compilation info here for now
-      if not mark.compilations.isEmpty and mark.invocations.isEmpty:
-        if not mark.compilations.first.invocation.okay:
-          golden.output mark.compilations.first.invocation, "failed compilation"
+      if not bench.compilations.isEmpty and bench.invocations.isEmpty:
+        if not bench.compilations.first.okay:
+          golden.output bench.compilations.first.invocation, "failed compilation"
         else:
-          golden.output mark, "compilations"
+          golden.output bench, started = mark.created, "compilations"
     except BenchmarkusInterruptus:
       break
     except Exception as e:

@@ -3,6 +3,7 @@
 stuff related to the RunningResult and statistics in a broad sense
 
 ]#
+import times
 import stats
 import lists
 import math
@@ -12,30 +13,27 @@ import strutils
 import terminaltables
 import msgpack4nim
 
-import spec
 import linkedlists
-import compilation
-import output
 
 export stats
 
-const billion = 1_000_000_000
+const
+  billion* = 1_000_000_000
+export billion
 
 type
-  StatValue = float64
+  StatValue* = float64
   ClassDimensions* = tuple
     count: int
     size: StatValue
 
-  RunningResult*[T] = ref object of GoldObject
-    list: SinglyLinkedList[T]
-    wall*: RunningStat
-    cpu*: RunningStat
-    memory*: RunningStat
+  RunningResult*[T] = ref object
+    list*: SinglyLinkedList[T]
+    stat*: RunningStat
 
 proc toTerminalTable(running: RunningResult; name: string): ref TerminalTable =
   let
-    stat = running.wall
+    stat = running.stat
   var
     row: seq[string]
   result = newUnicodeTable()
@@ -48,18 +46,15 @@ proc toTerminalTable(running: RunningResult; name: string): ref TerminalTable =
   row.add fmt"{stat.standardDeviation:>0.6f}"
   result.addRow row
 
-proc `$`*(running: RunningResult): string =
-  let table = running.toTerminalTable("     #")
+proc renderTable*(running: RunningResult; name: string): string =
+  let table = running.toTerminalTable(name)
   result = table.render.strip
 
-proc output*(golden: Golden; running: RunningResult; desc: string = "") =
-  if desc != "":
-    running.description = desc
-  let table = running.toTerminalTable(desc)
-  golden.output table.render.strip
+proc `$`*(running: RunningResult): string =
+  result = running.renderTable("     #")
 
 proc len*(running: RunningResult): int =
-  result = running.wall.n
+  result = running.stat.n
 
 proc isEmpty*(running: RunningResult): bool =
   result = running.list.isEmpty
@@ -68,26 +63,11 @@ proc first*[T](running: RunningResult[T]): T =
   assert not running.isEmpty
   result = running.list.first
 
-converter toSeconds*(wall: WallDuration): StatValue =
+converter toSeconds*(wall: Duration): StatValue =
   result = wall.inNanoSeconds.StatValue / billion
 
 proc standardScore*(stat: RunningStat; value: StatValue): StatValue =
   result = (value - stat.mean) / stat.standardDeviation
-
-proc add*[T: InvocationInfo](running: RunningResult[T]; value: T) =
-  ## for stats, pull out the invocation duration from invocation info
-  let seconds = value.runtime.wall.toSeconds
-  running.list.append value
-  running.wall.push seconds
-
-proc reset*[T: InvocationInfo](running: RunningResult[T]) =
-  running.wall.clear
-  running.cpu.clear
-  running.memory.clear
-  var wall: seq[StatValue]
-  for invocation in running.list.items:
-    wall.add invocation.runtime.wall.toSeconds
-  running.wall.push wall
 
 proc classSize*(stat: RunningStat; count: int): StatValue =
   ## the step size for each element in the histogram
@@ -109,10 +89,10 @@ proc crudeHistogram*(running: RunningResult; dims: ClassDimensions): seq[int] =
   result = newSeqOfCap[int](dims.count)
   for i in 0 .. dims.count - 1:
     result.add 0
-  let (smin, smax) = (running.wall.min, running.wall.max)
+  let (smin, smax) = (running.stat.min, running.stat.max)
   for element in running.list.items:
     var n = 0
-    let s = element.runtime.wall.toSeconds
+    let s = element.toStatValue
     if s == smin:
       n = 0
     elif s == smax:
@@ -137,7 +117,7 @@ proc maybePrune*(running: var RunningResult; histogram: var seq[int];
   ## maybe prune some outliers from the top of our histogram
 
   # first, see if we really want to prune anything
-  let prunePoint = running.wall.prunePoint(histogram, dims, outlier)
+  let prunePoint = running.stat.prunePoint(histogram, dims, outlier)
   if prunePoint == 0:
     return
 
@@ -145,7 +125,7 @@ proc maybePrune*(running: var RunningResult; histogram: var seq[int];
   let pruneOffset = initDuration(nanoseconds = int(prunePoint * billion))
   var head = running.list.head
   while true:
-    while head.next != nil and head.next.value.runtime.wall > pruneOffset:
+    while head.next != nil and head.next.value.toWallDuration > pruneOffset:
       head.removeNext
     if head.next == nil:
       break
@@ -163,43 +143,25 @@ iterator items*[T](running: RunningResult[T]): T =
   for item in running.list.items:
     yield item
 
-proc add*[T: CompilationInfo](running: RunningResult[T]; value: T) =
-  ## for stats, pull out the invocation duration from compilation info
-  running.list.append value
-  running.wall.push value.invocation.runtime.wall.toSeconds
-
 proc truthy*(running: RunningResult; honesty: float): bool =
   ## do we think we know enough about the running result to stop running?
   if running.len < 3:
     return
-  if running.wall.mean * honesty > running.wall.standardDeviation:
+  if running.stat.mean * honesty > running.stat.standardDeviation:
     return true
 
 proc newRunningResult*[T](): RunningResult[T] =
   new result
-  result.init "running"
   result.list = initSinglyLinkedList[T]()
 
 proc pack_type*[ByteStream](s: ByteStream; x: RunningResult) =
   s.pack_type(x.oid)
   s.pack_type(x.entry)
   s.pack_type(x.list)
-  s.pack_type(x.wall)
+  s.pack_type(x.stat)
 
 proc unpack_type*[ByteStream](s: ByteStream; x: var RunningResult) =
   s.unpack_type(x.oid)
   s.unpack_type(x.entry)
   s.unpack_type(x.list)
-  s.unpack_type(x.wall)
-
-proc pack_type*[ByteStream](s: ByteStream; x: RunningResult[CompilationInfo]) =
-  s.pack_type(x.oid)
-  s.pack_type(x.entry)
-  s.pack_type(x.list)
-  s.pack_type(x.wall)
-
-proc unpack_type*[ByteStream](s: ByteStream; x: var RunningResult[CompilationInfo]) =
-  s.unpack_type(x.oid)
-  s.unpack_type(x.entry)
-  s.unpack_type(x.list)
-  s.unpack_type(x.wall)
+  s.unpack_type(x.stat)

@@ -10,7 +10,7 @@ import asyncdispatch
 import asyncfutures
 
 import spec
-import output
+#import output
 import running
 import compilation
 import invoke
@@ -19,37 +19,31 @@ when defined(plotGraphs):
   import osproc
   import plot
 
-type
-  BenchmarkResult* = ref object of GoldObject
-    binary*: FileDetail
-    compilations*: RunningResult[CompilationInfo]
-    invocations*: RunningResult[InvocationInfo]
-
 proc `$`*(bench: BenchmarkResult): string =
-  result = $bench.GoldObject
   if bench.invocations.len > 0:
     let invocation = bench.invocations.first
-    result &= "\n" & $invocation
+    result = $invocation.invocation
   if bench.invocations.len == 0:
     if bench.compilations.len > 0:
       result &= "\ncompilations:\n" & $bench.compilations
   else:
     result &= "\ninvocations:\n" & $bench.invocations
 
-proc newBenchmarkResult*(): BenchmarkResult =
-  new result
-  result.init "bench"
-  result.compilations = newRunningResult[CompilationInfo]()
-  result.invocations = newRunningResult[InvocationInfo]()
+proc newBenchmarkResult*(): Gold =
+  result = newGold(aBenchmark)
+  result.benchmark = BenchmarkResult()
+  result.benchmark.compilations = newRunningResult[Gold]()
+  result.benchmark.invocations = newRunningResult[Gold]()
 
-proc output*(golden: Golden; benchmark: BenchmarkResult; desc: string = "") =
+proc output*(golden: Golden; benchmark: BenchmarkResult; started: Time;
+             desc: string = "") =
   ## generally used to output a benchmark result periodically
-  let since = getTime() - benchmark.entry.toTime
+  let since = getTime() - started
   golden.output desc & " after " & $since.inSeconds & "s"
   if benchmark.invocations.len > 0:
     let invocation = benchmark.invocations.first
     if not invocation.okay:
-      golden.output invocation
+      golden.output invocation.invocation
   if benchmark.invocations.len == 0:
     if benchmark.compilations.len > 0:
       golden.output benchmark.compilations, "Builds"
@@ -60,7 +54,7 @@ proc output*(golden: Golden; benchmark: BenchmarkResult; desc: string = "") =
   when defined(plotGraphs):
     while ConsoleGraphs in golden.options.flags:
       var
-        dims = benchmark.invocations.wall.makeDimensions(golden.options.classes)
+        dims = benchmark.invocations.stat.makeDimensions(golden.options.classes)
         histo = benchmark.invocations.crudeHistogram(dims)
       if benchmark.invocations.maybePrune(histo, dims, golden.options.prune):
         continue
@@ -68,7 +62,7 @@ proc output*(golden: Golden; benchmark: BenchmarkResult; desc: string = "") =
       # hangs if histo.len == 1 due to max-min == 0
       if histo.len <= 1:
         break
-      let filename = plot.consolePlot(benchmark.invocations.wall, histo, dims)
+      let filename = plot.consolePlot(benchmark.invocations.stat, histo, dims)
       if os.getEnv("TERM", "") == "xterm-kitty":
         let kitty = "/usr/bin/kitty"
         if kitty.fileExists:
@@ -141,24 +135,24 @@ proc appearsBenchmarkable*(path: string): bool =
   try:
     let info = getFileInfo(path)
     var detail = newFileDetail(path, info)
-    if detail.kind notin {pcFile, pcLinkToFile}:
+    if detail.file.kind notin {pcFile, pcLinkToFile}:
       return false
-    if detail.path.appearsToBeCompileableSource:
+    if detail.file.path.appearsToBeCompileableSource:
       return true
-    result = detail.path.appearsToBeExecutable(info)
+    result = detail.file.path.appearsToBeExecutable(info)
   except OSError as e:
     stdmsg().writeLine(path & ": " & e.msg)
     return false
 
 proc benchmark*(golden: Golden; filename: string;
-                arguments: seq[string]): Future[BenchmarkResult] {.async.} =
+                arguments: seq[string]): Future[Gold] {.async.} =
   ## benchmark an arbitrary executable
   let
     target = newFileDetailWithInfo(filename)
     wall = getTime()
   var
     bench = newBenchmarkResult()
-    invocation: InvocationInfo
+    invocation: Gold
     runs, outputs, fib = 0
     lastOutputTime = getTime()
     truthy = false
@@ -174,13 +168,15 @@ proc benchmark*(golden: Golden; filename: string;
       invocation = await invoke(target, arguments)
       runs.inc
       if invocation.okay:
-        bench.invocations.add invocation
+        bench.benchmark.invocations.add invocation
         if DumpOutput in golden.options.flags:
-          golden.output invocation, "invocation", arguments = arguments
+          golden.output invocation.invocation, "invocation",
+                        arguments = arguments
       else:
-        golden.output invocation, "failed invocation", arguments = arguments
+        golden.output invocation.invocation, "failed invocation",
+                      arguments = arguments
       secs = getTime() - wall
-      truthy = bench.invocations.truthy(golden.options.honesty)
+      truthy = bench.benchmark.invocations.truthy(golden.options.honesty)
       if RunLimit in golden.options.flags:
         if runs >= golden.options.runLimit:
           truthy = true
@@ -196,7 +192,7 @@ proc benchmark*(golden: Golden; filename: string;
         fib = fibonacci(outputs)
       if truthy or not invocation.okay:
         break
-      golden.output bench, "benchmark"
+      golden.output bench.benchmark, started = bench.created, "benchmark"
   except BenchmarkusInterruptus as e:
     termination = "interrupted benchmark"
     result = bench
@@ -206,37 +202,38 @@ proc benchmark*(golden: Golden; filename: string;
     result = bench
     raise e
   finally:
-    if not bench.invocations.isEmpty or not bench.compilations.isEmpty:
-      golden.output bench, termination
+    if not bench.benchmark.invocations.isEmpty or not bench.benchmark.compilations.isEmpty:
+      golden.output bench.benchmark, started = bench.created, termination
   result = bench
 
 proc benchmarkCompiler*(golden: Golden;
-                        filename: string): Future[BenchmarkResult] {.async.} =
+                        filename: string): Future[Gold] {.async.} =
   assert CompileOnly in golden.options.flags
   var
     compilation = newCompilationInfo(filename)
     compiler = compilation.compiler
     args = argumentsForCompilation(golden.options.arguments)
   # add the source filename to compilation arguments
-  args.add compilation.source.path
-  result = await golden.benchmark(compiler.binary.path, args)
+  args.add compilation.compilation.source.file.path
+  result = await golden.benchmark(compiler.binary.file.path, args)
 
-iterator benchmarkNim*(golden: Golden; bench: var BenchmarkResult;
-                       filename: string): Future[BenchmarkResult] =
+iterator benchmarkNim*(golden: Golden; gold: var Gold;
+                       filename: string): Future[Gold] =
   ## benchmark a source file
   assert CompileOnly notin golden.options.flags
   var
-    future = newFuture[BenchmarkResult]()
+    future = newFuture[Gold]()
     compilation = waitfor compileFile(filename, golden.options.arguments)
+    bench = gold.benchmark
 
   # the compilation is pretty solid; let's add it to the benchmark
   bench.compilations.add compilation
   # and yield it so the user can see the compilation result
-  future.complete(bench)
+  future.complete(gold)
   yield future
 
   # if the compilation was successful,
   # we go on to yield a benchmark of the executable we just built
-  if compilation.invocation.okay:
-    yield golden.benchmark(compilation.binary.path,
+  if compilation.okay:
+    yield golden.benchmark(compilation.compilation.binary.file.path,
                            golden.options.arguments)
