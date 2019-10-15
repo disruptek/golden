@@ -210,11 +210,11 @@ proc benchmarkCompiler*(golden: Golden;
                         filename: string): Future[Gold] {.async.} =
   assert CompileOnly in golden.options.flags
   var
-    compilation = newCompilationInfo(filename)
-    compiler = compilation.compiler
+    gold = newCompilationInfo(filename)
+    compiler = gold.compilation.compiler.compiler
     args = argumentsForCompilation(golden.options.arguments)
   # add the source filename to compilation arguments
-  args.add compilation.compilation.source.file.path
+  args.add gold.compilation.source.file.path
   result = await golden.benchmark(compiler.binary.file.path, args)
 
 iterator benchmarkNim*(golden: Golden; gold: var Gold;
