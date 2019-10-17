@@ -22,13 +22,6 @@ proc render*(d: Duration): string {.raises: [].} =
 proc `$`*(detail: FileDetail): string =
   result = detail.path
 
-proc `$`*(compiler: CompilerInfo): string =
-  let digest = $compiler.binary.file.digest
-  result = "Nim " & compiler.version
-  if digest != "00000000000000000000000000000000":
-    result &= " digest " & digest
-  result &= " built " & $compiler.binary.file.mtime
-
 proc `$`*(runtime: RuntimeInfo): string =
   result = runtime.wall.render
 
