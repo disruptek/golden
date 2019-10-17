@@ -22,7 +22,6 @@ const
 
 when defined(LongWayHome):
   import posix
-  {.warning: "long way home".}
 when defined(Heapster):
   {.warning: "heapster".}
 
