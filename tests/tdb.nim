@@ -109,9 +109,9 @@ suite "database":
       if leak == 0 or k < 2:
         leak = occupied - start
       when defined(debug):
-        echo "memory leak for " & $k & " opens " & $(occupied - start)
+        echo "memory leak to " & $leak & " for " & $k & " opens " & $(occupied - start)
       else:
-        checkpoint "memory leak for " & $k & " opens " & $(occupied - start)
+        checkpoint "memory leak " & $leak & " for " & $k & " opens " & $(occupied - start)
       # to see if it's changing over iteration
       # 408 was achieved when removing the database... stdlib leaks?
       check occupied - start <= 0 or leak == occupied - start or leak <= 200
