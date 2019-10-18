@@ -7,9 +7,8 @@ suite "statistics":
   test "basic histogram pruning":
     var running = newRunningResult[Gold]()
     for t in [2, 3, 4, 5, 6]:
-      var i = newInvocationInfo()
-      i.invocation.runtime = newRuntimeInfo()
-      i.invocation.runtime.wall = initDuration(seconds = t)
+      var i = newInvocation()
+      i.invokation.wall = initDuration(seconds = t)
       running.add i
       if t == 2:
         check running.stat.classSize(1) == 2.0
@@ -33,9 +32,8 @@ suite "statistics":
 
     for t in [2, 3, 4]:
       for u in 0 .. 10_000:
-        var i = newInvocationInfo()
-        i.invocation.runtime = newRuntimeInfo()
-        i.invocation.runtime.wall = initDuration(seconds = t)
+        var i = newInvocation()
+        i.invokation.wall = initDuration(seconds = t)
         running.add i
     dims = running.stat.makeDimensions(9)
     histo = running.crudeHistogram dims

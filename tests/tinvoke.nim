@@ -10,15 +10,16 @@ suite "compile and invoke":
   setup:
     let
       exampleNim = newFileDetailWithInfo("tests/example.nim")
-      gold = newCompilationInfo(exampleNim.file.path)
-      binary {.used.} = gold.compilation.binary
+    var
+      compiler = newCompiler()
+      gold {.used.} = newCompilation(compiler, exampleNim.file.path)
 
   test "assumptions":
-    check gold.compilation.compiler.compiler.chash != ""
-    check gold.compilation.compiler.compiler.version != ""
-    check argumentsForCompilation(@[]) == @["c", "-d:danger"]
-    check argumentsForCompilation(@["umm"]) == @["c", "umm"]
-    check argumentsForCompilation(@["cpp", "-d:debug"]) == @["cpp", "-d:debug"]
+    check gold.compiler.chash != ""
+    check gold.compiler.version != ""
+    check gold.argumentsForCompilation(@[]) == @["c", "-d:danger"]
+    check gold.argumentsForCompilation(@["umm"]) == @["c", "umm"]
+    check gold.argumentsForCompilation(@["cpp", "-d:debug"]) == @["cpp", "-d:debug"]
 
   test "compilation":
     let
@@ -28,17 +29,18 @@ suite "compile and invoke":
     let
       simple = waitfor compileFile(exampleNim.file.path)
     check simple.okay
-    check simple.compilation.binary.file.path == target
-    check simple.compilation.binary.file.path.fileExists
+    check simple.target.file.path == target
+    check simple.target.file.path.fileExists
 
   test "invocation":
+    var binary = gold.target
     var invocation = waitfor invoke(binary)
     check invocation.okay
     invocation = waitfor invoke(binary, @["quit"])
     check not invocation.okay
-    check invocation.invocation.output.code == 3
+    check invocation.invokation.code == 3
     invocation = waitfor invoke(binary, @["hello"])
     check invocation.okay
-    check invocation.invocation.output.stdout == "world\n"
+    check invocation.invokation.stdout == "world\n"
     invocation = waitfor invoke(binary, @["goodbye"])
-    check invocation.invocation.output.stderr == "cruel world\n"
+    check invocation.invokation.stderr == "cruel world\n"

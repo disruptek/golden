@@ -7,7 +7,6 @@ import cligen
 
 import golden/spec
 import golden/benchmark
-import golden/running
 import golden/compilation
 
 import golden/lm as dbImpl
@@ -31,7 +30,7 @@ proc `$`*(gold: Gold): string =
   of aFile:
     result = $gold.file
   else:
-    result = gold.name & ":" & $gold.oid & " entry " & $gold.created
+    result = $gold.kind & $gold.oid & " entry " & $gold.created
 
 proc output*(golden: Golden; gold: Gold; desc: string = "") =
   if desc != "":
@@ -173,15 +172,7 @@ proc golden(sources: seq[string];
 
   for b in golden.performBenchmarks(targets):
     try:
-      let
-        mark = waitfor b
-        bench = mark.benchmark
-      # output compilation info here for now
-      if not bench.compilations.isEmpty and bench.invocations.isEmpty:
-        if not bench.compilations.first.okay:
-          golden.output bench.compilations.first.invocation, "failed compilation"
-        else:
-          golden.output bench, started = mark.created, "compilations"
+      discard waitfor b
     except BenchmarkusInterruptus:
       break
     except Exception as e:

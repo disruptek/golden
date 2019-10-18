@@ -11,6 +11,11 @@ import terminal
 import stats
 import lists
 import json
+import tables
+import sequtils
+import strformat
+
+#from posix import Tms
 
 when defined(useSHA):
   import std/sha1
@@ -28,6 +33,13 @@ const
   ISO8601noTZ* = initTimeFormat "yyyy-MM-dd\'T\'HH:mm:ss\'.\'fff\'Z\'"
   billion* = 1_000_000_000
 
+when declared(Tms):
+  export Tms
+  type CpuDuration* = Tms
+else:
+  from posix import Rusage
+  type CpuDuration* = Rusage
+
 type
   BenchmarkusInterruptus* = IOError
 
@@ -35,19 +47,18 @@ type
     v0 = "(none)"
     v1 = "dragons; really alpha"
 
-  ModelEvent* = enum
-    Upgrade
-    Downgrade
+  ModelEvent* = enum Upgrade, Downgrade
 
   # ordinal value is used as a magic number!
   GoldKind* = enum
     aFile = "📂"
-    aRuntime = "⏱️"
-    anOutput = "📢"
+    #aRuntime = "⏱️"
+    #anOutput = "📢"
     aCompiler = "🧰"
     aCompilation = "🎯"
     anInvocation = "🎽"
     aBenchmark = "🏁"
+    aGolden = "👑"
     #aPackageOfCourse = "📦"
     #aTestHaHa = "🧪"
     #aRocketDuh = "🚀"
@@ -55,62 +66,86 @@ type
 
   Gold* = ref object
     oid*: Oid
-    name*: string
     description*: string
+    links: GoldLinks
     when defined(StoreEntry):
       entry*: DateTime
     dirty*: bool
     case kind*: GoldKind
     of aFile:
       file*: FileDetail
-    of aRuntime:
-      runtime*: RuntimeInfo
-    of anOutput:
-      output*: OutputInfo
     of aCompiler:
-      compiler*: CompilerInfo
+      version*: string
+      major*: int
+      minor*: int
+      patch*: int
+      chash*: string
     of aCompilation:
-      compilation*: CompilationInfo
+      compilation: CompilationInfo
     of anInvocation:
-      invocation*: InvocationInfo
+      invokation*: InvocationInfo
     of aBenchmark:
       benchmark*: BenchmarkResult
+      terminated*: Terminated
+    of aGolden:
+      options*: GoldenOptions
+
+  LinkFlag = enum
+    Incoming
+    Outgoing
+    Unique
+    Directory
+    Binary
+    Source
+    Stdout
+    Stderr
+    Stdin
+    Input
+    Output
+
+  LinkTarget = ref object
+    oid: Oid
+    kind: GoldKind
+
+  Link = ref object
+    flags: set[LinkFlag]
+    source: LinkTarget
+    target: LinkTarget
+    entry: Time
+    dirty: bool
+
+  GoldLinks = ref object
+    dad: Gold
+    ins: seq[Link]
+    outs: seq[Link]
+    group: GoldGroup
+    flags: TableRef[Oid, set[LinkFlag]]
+    dirty: bool
+
+  GoldGroup* = ref object
+    cache: TableRef[Oid, Gold]
+
+  LinkPairs = tuple[flags: set[LinkFlag], gold: Gold]
 
   FileSize* = BiggestInt
   FileDetail* = ref object
+    kind*: PathComponent
     digest*: string
-    size*: FileSize
+    size*: BiggestInt
     path*: string
     mtime*: Time
-    kind*: PathComponent
 
   WallDuration* = Duration
-  CpuDuration* = float64
-  MemorySize* = int
+  MemorySize* = BiggestInt
 
-  RuntimeInfo* = ref object
+  InvocationInfo* = ref object
     wall*: WallDuration
     cpu*: CpuDuration
     memory*: MemorySize
-
-  OutputInfo* = ref object
-    code*: int
+    arguments*: ref seq[string]
     stdout*: string
     stderr*: string
-
-  InvocationInfo* = ref object
-    binary*: Gold
-    arguments*: ref seq[string]
-    runtime*: RuntimeInfo
-    output*: OutputInfo
-
-  CompilerInfo* = ref object
-    binary*: Gold
-    version*: string
-    major*: int
-    minor*: int
-    patch*: int
-    chash*: string
+    code*: int
 
   CompilationInfo* = ref object
     compiler*: Gold
@@ -118,9 +153,14 @@ type
     source*: Gold
     binary*: Gold
 
+  Terminated* {.pure.} = enum
+    Success
+    Failure
+    Interrupt
+
   BenchmarkResult* = ref object
     binary*: Gold
-    compilations*: RunningResult[Gold]
+    compilations* {.deprecated.}: RunningResult[Gold]
     invocations*: RunningResult[Gold]
 
   GoldenFlag* = enum
@@ -152,52 +192,52 @@ proc created*(gold: Gold): Time {.inline.} =
   ## when the object was originally created
   gold.oid.generatedTime
 
+proc `==`(a, b: LinkTarget): bool {.inline.} = a.oid == b.oid
+
+proc newGoldGroup(): GoldGroup =
+  result = GoldGroup(cache: newTable[Oid, Gold]())
+
+proc newGoldLinks(gold: Gold): GoldLinks =
+  result = GoldLinks(dad: gold, ins: @[], outs: @[])
+  result.group = newGoldGroup()
+  result.flags = newTable[Oid, set[LinkFlag]]()
+
+proc init(gold: var Gold) =
+  gold.links = newGoldLinks(gold)
+
 proc newGold*(kind: GoldKind): Gold =
+  ## create a new instance that we may want to save in the database
   when defined(StoreEntry):
     result = Gold(kind: kind, oid: genOid(), entry: now(), dirty: true)
   else:
     result = Gold(kind: kind, oid: genOid(), dirty: true)
+  result.init
 
 when defined(StoreEntry):
   proc newGold(kind: GoldKind; oid: Oid; entry: DateTime): Gold =
     ## prep a new Gold object for database paint
     result = Gold(kind: kind, oid: oid, entry: entry, dirty: false)
+    result.init
 else:
   proc newGold(kind: GoldKind; oid: Oid): Gold =
     ## prep a new Gold object for database paint
     result = Gold(kind: kind, oid: oid, dirty: false)
+    result.init
 
 proc digestOf*(content: string): string =
+  ## calculate the digest of a string
   when defined(useSHA):
     result = $secureHash(content)
   else:
     result = $toMD5(content)
 
 proc digestOfFileContents(path: string): string =
+  ## calculate the digest of a file
   assert path.fileExists
   when defined(useSHA):
     result = $secureHashFile(path)
   else:
     result = digestOf(readFile(path))
-
-proc commandLine*(invocation: InvocationInfo): string =
-  ## compose the full commandLine for the given invocation
-  result = invocation.binary.file.path
-  if invocation.arguments != nil:
-    if invocation.arguments[].len > 0:
-      result &= " " & invocation.arguments[].join(" ")
-
-proc okay*(gold: Gold): bool =
-  case gold.kind:
-  of aCompilation:
-    result = gold.compilation.invocation.okay
-  of anInvocation:
-    result = gold.invocation.output.code == 0
-  else:
-    raise newException(Defect, "nonsensical")
-
-proc newRuntimeInfo*(): RuntimeInfo =
-  new result
 
 proc newFileDetail*(path: string): Gold =
   result = newGold(aFile)
@@ -218,39 +258,300 @@ proc newFileDetailWithInfo*(path: string): Gold =
   assert path.fileExists, "path `" & path & "` does not exist"
   result = newFileDetail(path, getFileInfo(path))
 
-proc newGolden*(): Golden =
-  if stdmsg().isatty:
-    result.options.flags.incl Interactive
-    result.options.flags.incl ColorConsole
+proc newFileDetailWithInfo*(gold: Gold): Gold =
+  result = newFileDetailWithInfo(gold.file.path)
+
+when defined(GoldenGold):
+  proc newGolden*(): Gold =
+    result = newGold(aGolden)
+    if stdmsg().isatty:
+      result.options.flags.incl Interactive
+      result.options.flags.incl ColorConsole
+    else:
+      result.options.flags.incl PipeOutput
+else:
+  proc newGolden*(): Golden =
+    if stdmsg().isatty:
+      result.options.flags.incl Interactive
+      result.options.flags.incl ColorConsole
+    else:
+      result.options.flags.incl PipeOutput
+
+proc linkTarget(gold: Gold): LinkTarget =
+  result = LinkTarget(oid: gold.oid, kind: gold.kind)
+
+func newLink(source: Gold; flags: set[LinkFlag]; target: Gold;
+             dirty = true): Link =
+  result = Link(flags: flags, entry: getTime(), dirty: dirty,
+                  source: source.linkTarget, target: target.linkTarget)
+
+iterator values(group: GoldGroup): Gold =
+  for gold in group.cache.values:
+    yield gold
+
+proc `[]`(group: GoldGroup; key: Oid): Gold =
+  result = group.cache[key]
+
+iterator pairs(links: GoldLinks): LinkPairs =
+  for oid, flags in links.flags.pairs:
+    yield (flags: flags, gold: links.group[oid])
+
+iterator `[]`(links: GoldLinks; kind: GoldKind): Gold =
+  for gold in links.group.values:
+    if gold.kind == kind:
+      yield gold
+
+proc `[]`(links: GoldLinks; kind: GoldKind): Gold =
+  for gold in links.group.values:
+    if gold.kind == kind:
+      return gold
+
+proc `[]`*(gold: Gold; kind: GoldKind): Gold =
+  result = gold.links[kind]
+
+iterator `{}`*(links: GoldLinks; flag: LinkFlag): Gold =
+  if flag == Incoming:
+    for link in links.ins:
+      yield links.group[link.target.oid]
+  elif flag == Outgoing:
+    for link in links.outs:
+      yield links.group[link.target.oid]
   else:
-    result.options.flags.incl PipeOutput
+    for flags, gold in links.pairs:
+      if flag in flags:
+        yield gold
 
-proc newOutputInfo*(): OutputInfo =
-  new result
+iterator `{}`*(links: GoldLinks; flags: set[LinkFlag]): Gold =
+  for tags, gold in links.pairs:
+    if (flags - tags).len == 0:
+      yield gold
 
-proc `binary=`*(gold: var Gold; file: Gold) =
-  assert file.kind == aFile
-  gold.binary = file
+iterator `{}`*(links: GoldLinks; flags: varargs[LinkFlag]): Gold =
+  var tags: set[LinkFlag]
+  for flag in flags:
+    tags.incl flag
+  for gold in links{tags}:
+    yield gold
 
-proc `source=`*(gold: var Gold; file: Gold) =
-  assert file.kind == aFile
-  gold.source = file
+proc contains(group: GoldGroup; oid: Oid): bool =
+  result = oid in group.cache
 
-proc init*(gold: var Gold; binary: Gold; args: ref seq[string]) =
+proc contains(group: GoldGroup; gold: Gold): bool =
+  result = gold.oid in group
+
+proc contains(links: GoldLinks; kind: GoldKind): bool =
+  for gold in links.group.values:
+    if gold.kind == kind:
+      return true
+
+proc excl(group: GoldGroup; oid: Oid) =
+  ## exclude an oid from the group
+  group.cache.del oid
+
+proc `==`(a, b: Link): bool {.inline.} =
+  ## two links are equal if they refer to the same endpoints
+  result = a.source == b.source and a.target == b.target
+
+proc incl(group: GoldGroup; gold: Gold) =
+  ## add gold to a group; no duplicate entries
+  if gold in group:
+    return
+  group.cache[gold.oid] = gold
+
+proc excl(links: var GoldLinks; link: Link) =
+  ## remove a link
+  if link.target.oid notin links.flags:
+    return
+  if Outgoing in link.flags:
+    links.outs = links.outs.filterIt it != link
+  if Incoming in link.flags:
+    links.ins = links.ins.filterIt it != link
+  links.flags.del link.target.oid
+  links.group.excl link.target.oid
+
+proc excl(links: var GoldLinks; target: Gold) =
+  ## remove a link to the given target
+  # construct a mask that matches Incoming and Outgoing
+  let mask = newLink(links.dad, {Incoming, Outgoing}, target)
+  # and exclude it
+  links.excl mask
+
+proc incl(links: var GoldLinks; link: Link; target: Gold) =
+  ## link to a target with the given, uh, link
+  var existing: set[LinkFlag]
+  if target.oid in links.flags:
+    existing = links.flags[target.oid]
+  if Outgoing in link.flags and Outgoing notin existing:
+    links.outs.add link
+  if Incoming in link.flags and Incoming notin existing:
+    links.ins.add link
+  links.flags[target.oid] = existing + link.flags
+  links.group.incl target
+
+proc rotateLinkFlags(flags: set[LinkFlag]): set[LinkFlag] =
+  result = flags
+  if Incoming in result and Outgoing in result:
+    discard
+  elif Incoming in result:
+    result.incl Outgoing
+    result.excl Incoming
+  elif Outgoing in result:
+    result.incl Incoming
+    result.excl Outgoing
+
+proc createLink(links: var GoldLinks; flags: set[LinkFlag]; target: var Gold) =
+  ## create a link by specifying the flags and the target
+  var
+    future: set[LinkFlag]
+    existing: set[LinkFlag]
+  if target.oid in links.flags:
+    existing = links.flags[target.oid]
+    future = flags + existing
+    if future.len == existing.len:
+      return
+  var tags = flags
+  case target.kind:
+  of aFile:
+    discard
+  of aCompiler:
+    tags.incl Unique
+  of aCompilation:
+    discard
+  of anInvocation:
+    discard
+  else:
+    raise newException(Defect,
+                       &"{links.dad.kind} doesn't link to {target.kind}")
+  let link = newLink(links.dad, tags, target)
+  if Unique in tags:
+    if target.kind in links:
+      links.excl links[target.kind]
+  links.incl link, target
+  tags = rotateLinkFlags(tags)
+  createLink(target.links, tags, links.dad)
+
+proc `{}=`(links: var GoldLinks; flags: varargs[LinkFlag]; target: var Gold) =
+  ## create a link by specifying the flags and the target
+  var tags: set[LinkFlag]
+  for flag in flags:
+    tags.incl flag
+  links.createLink(tags, target)
+
+proc compiler*(gold: Gold): Gold =
+  result = gold.links[aCompiler]
+
+proc `compiler=`*(gold: var Gold; compiler: var Gold) =
+  ## link to a compiler
+  assert compiler.kind == aCompiler
+  var flags: set[LinkFlag]
+  case gold.kind:
+  of aFile:
+    flags = {Outgoing}
+  of aCompilation:
+    flags = {Incoming}
+  else:
+    raise newException(Defect, "inconceivable!")
+  gold.links.createLink(flags, compiler)
+
+proc binary*(gold: Gold): Gold =
+  assert gold != nil
+  case gold.kind:
+  of aCompiler, aCompilation, anInvocation:
+    for file in gold.links{Binary}:
+      return file
+    raise newException(Defect, "unable to find binary for " & $gold.kind)
+  else:
+    raise newException(Defect, "inconceivable!")
+
+iterator sources*(gold: Gold): Gold =
+  for file in gold.links{Source}:
+    yield file
+
+proc source*(gold: Gold): Gold {.deprecated.} =
+  for file in gold.sources:
+    return file
+
+proc target*(gold: Gold): Gold =
+  assert gold.kind == aCompilation
+  for file in gold.links{Output,Binary}:
+    return file
+
+proc compilation*(gold: Gold): Gold =
+  for compilation in gold.links{Incoming}:
+    if compilation.kind == aCompilation:
+      return compilation
+
+proc invocation*(gold: Gold): Gold =
+  assert gold.kind != anInvocation
+  for invocation in gold.links{Incoming}:
+    if invocation.kind == anInvocation:
+      return invocation
+
+proc invocations*(gold: var Gold): RunningResult[Gold] =
+  result = gold.benchmark.invocations
+
+proc compilations*(gold: var Gold): RunningResult[Gold] =
+  result = gold.compilations
+
+proc `source=`*(gold: var Gold; source: var Gold) =
+  ## link to a source file
+  assert gold.kind == aCompilation
+  assert source.kind == aFile
+  source.links{Outgoing, Incoming, Input, Source} = gold
+
+proc `binary=`*(gold: var Gold; binary: var Gold) =
+  ## link to a binary (executable) file
+  assert gold.kind in [anInvocation, aCompiler]
+  assert binary.kind == aFile
+  binary.links{Outgoing, Input, Binary} = gold
+
+proc `invocation=`*(gold: var Gold; invocation: var Gold) =
+  ## link a compilation to its invocation
+  assert gold.kind == aCompilation
+  assert invocation.kind == anInvocation
+  invocation.links{Outgoing} = gold
+
+proc `target=`*(gold: var Gold; target: var Gold) =
+  ## link a compilation to its target (binary)
+  assert gold.kind == aCompilation
+  assert target.kind == aFile
+  target.links{Outgoing, Output, Binary} = gold
+
+proc `compilation=`*(gold: var Gold; compilation: CompilationInfo) =
+  assert gold.kind == aCompilation
+  gold.compilation = compilation
+
+proc commandLine*(invocation: Gold): string =
+  ## compose the full commandLine for the given invocation
+  result = invocation.binary.file.path
+  if invocation.invokation.arguments != nil:
+    if invocation.invokation.arguments[].len > 0:
+      result &= " " & invocation.invokation.arguments[].join(" ")
+
+proc init*(gold: var Gold; binary: var Gold; args: ref seq[string]) =
   assert gold.kind == anInvocation
   assert binary.kind == aFile
-  gold.invocation = InvocationInfo()
-  gold.invocation.binary = binary
-  gold.invocation.arguments = args
-  gold.invocation.output = newOutputInfo()
-  gold.invocation.runtime = newRuntimeInfo()
+  gold.invokation = InvocationInfo()
+  gold.links{Incoming,Outgoing,Binary,Input} = binary
+  gold.invokation.arguments = args
 
-proc newInvocationInfo*(): Gold =
+proc okay*(gold: Gold): bool =
+  ## measure the output code of a completed process
+  case gold.kind:
+  of aCompilation:
+    result = gold.invocation.okay
+  of anInvocation:
+    result = gold.invokation.code == 0
+  else:
+    raise newException(Defect, "inconceivable!")
+
+proc newInvocation*(): Gold =
   result = newGold(anInvocation)
-  result.invocation = InvocationInfo()
+  result.invokation = InvocationInfo()
 
-proc newInvocationInfo*(binary: Gold; args: ref seq[string]): Gold =
-  result = newInvocationInfo()
+proc newInvocation*(file: Gold; args: ref seq[string]): Gold =
+  var binary = newFileDetailWithInfo(file.file.path)
+  result = newInvocation()
   result.init(binary, args = args)
 
 proc fibonacci*(x: int): int =
@@ -258,11 +559,11 @@ proc fibonacci*(x: int): int =
   else: fibonacci(x - 1) + fibonacci(x - 2)
 
 proc pack_type*[ByteStream](s: ByteStream; x: GoldKind) =
-  let v = cast[char](ord(x))
+  let v = cast[uint8](ord(x))
   s.pack(v)
 
 proc unpack_type*[ByteStream](s: ByteStream; x: var GoldKind) =
-  var v: char
+  var v: uint8
   s.unpack_type(v)
   x = cast[GoldKind](v)
 
@@ -337,7 +638,7 @@ proc pack_type*[ByteStream](s: ByteStream; x: Gold) =
   of aFile:
     s.pack(x.file)
   else:
-    raise newException(Defect, "unsupported")
+    raise newException(Defect, "inconceivable!")
 
 proc unpack_type*[ByteStream](s: ByteStream; gold: var Gold) =
   var
@@ -356,55 +657,7 @@ proc unpack_type*[ByteStream](s: ByteStream; gold: var Gold) =
     new gold.file
     s.unpack_type(gold.file)
   else:
-    raise newException(Defect, "unsupported")
-
-#[
-proc pack_type*[ByteStream](s: ByteStream; x: CompilationInfo) =
-  s.pack(x.oid)
-  s.pack(x.entry)
-  s.pack(x.source)
-  s.pack(x.compiler)
-  s.pack(x.binary)
-  s.pack(x.invocation)
-  when declared(x.runtime):
-    s.pack(x.runtime)
-  else:
-    s.pack(x.invocation.runtime)
-
-proc unpack_type*[ByteStream](s: ByteStream; x: var CompilationInfo) =
-  s.unpack_type(x.oid)
-  s.unpack_type(x.entry)
-  s.unpack_type(x.source)
-  s.unpack_type(x.compiler)
-  s.unpack_type(x.binary)
-  s.unpack_type(x.invocation)
-  when declared(x.runtime):
-    s.unpack_type(x.runtime)
-  else:
-    s.unpack_type(x.invocation.runtime)
-
-proc pack_type*[ByteStream](s: ByteStream; x: InvocationInfo) =
-  s.pack(x.oid)
-  s.pack(x.entry)
-  s.pack(x.arguments)
-  s.pack(x.binary)
-  s.pack(x.invocation)
-  when declared(x.runtime):
-    s.pack(x.runtime)
-  else:
-    s.pack(x.invocation.runtime)
-
-proc unpack_type*[ByteStream](s: ByteStream; x: var InvocationInfo) =
-  s.unpack_type(x.oid)
-  s.unpack_type(x.entry)
-  s.unpack_type(x.compiler)
-  s.unpack_type(x.binary)
-  s.unpack_type(x.invocation)
-  when declared(x.runtime):
-    s.unpack_type(x.runtime)
-  else:
-    s.unpack_type(x.invocation.runtime)
-]#
+    raise newException(Defect, "inconceivable!")
 
 proc toJson*(entry: DateTime): JsonNode =
   result = newJString entry.format(ISO8601noTZ)
@@ -412,7 +665,6 @@ proc toJson*(entry: DateTime): JsonNode =
 proc toJson*(gold: Gold): JsonNode =
   result = %* {
     "oid": newJString $gold.oid,
-    "name": newJString gold.name,
     "description": newJString gold.description,
   }
   when defined(StoreEntry):
@@ -424,7 +676,7 @@ proc jsonOutput*(golden: Golden): bool =
 
 proc add*[T: InvocationInfo](running: RunningResult[T]; value: T) =
   ## for stats, pull out the invocation duration from invocation info
-  let seconds = value.runtime.wall.toSeconds
+  let seconds = value.wall.toSeconds
   running.list.append value
   running.stat.push seconds
 
@@ -433,37 +685,31 @@ proc add*[T: Gold](running: RunningResult[T]; value: T) =
   var v: StatValue
   case value.kind:
   of aCompilation:
-    v = value.compilation.invocation.invocation.runtime.wall.toSeconds
+    v = value.invocation.invokation.wall.toSeconds
   of anInvocation:
-    v = value.invocation.runtime.wall.toSeconds
+    v = value.invokation.wall.toSeconds
   else:
-    raise newException(Defect, "nonsense")
+    raise newException(Defect, "inconceivable!")
   running.list.append value
   running.stat.push v
 
-proc reset*[T: InvocationInfo](running: RunningResult[T]) =
+proc reset*[T: InvocationInfo](running: RunningResult[T]) {.deprecated.} =
   running.stat.clear
   var stat: seq[StatValue]
   for invocation in running.list.items:
     stat.add invocation.runtime.stat.toSeconds
   running.stat.push stat
 
-proc add*[T: CompilationInfo](running: RunningResult[T]; value: T) =
+proc add*[T: CompilationInfo](running: RunningResult[T]; value: T) {.deprecated.} =
   ## for stats, pull out the invocation duration from compilation info
   running.list.append value
-  running.stat.push value.invocation.runtime.wall.toSeconds
+  running.stat.push value.invocation.wall.toSeconds
 
-proc pack_type*[ByteStream](s: ByteStream; x: RunningResult[CompilationInfo]) =
-  s.pack_type(x.oid)
-  s.pack_type(x.entry)
-  s.pack_type(x.list)
-  s.pack_type(x.wall)
-
-proc unpack_type*[ByteStream](s: ByteStream; x: var RunningResult[CompilationInfo]) =
-  s.unpack_type(x.oid)
-  s.unpack_type(x.entry)
-  s.unpack_type(x.list)
-  s.unpack_type(x.wall)
+proc quiesceMemory*(message: string): int {.inline.} =
+  GC_fullCollect()
+  when defined(debug):
+    stdmsg().writeLine GC_getStatistics()
+  result = getOccupiedMem()
 
 template goldenDebug*() =
   when defined(debug):
@@ -479,11 +725,11 @@ include output
 proc toWallDuration*(gold: Gold): Duration =
   case gold.kind:
   of anInvocation:
-    result = gold.invocation.runtime.wall
+    result = gold.invokation.wall
   of aCompilation:
-    result = gold.compilation.invocation.invocation.runtime.wall
+    result = gold.compilation.invocation.toWallDuration
   else:
-    raise newException(Defect, "nonsense")
+    raise newException(Defect, "inconceivable!")
 
 proc toStatValue*(gold: Gold): StatValue =
   case gold.kind:
@@ -492,7 +738,7 @@ proc toStatValue*(gold: Gold): StatValue =
   of aCompilation:
     result = gold.toWallDuration.toSeconds
   else:
-    raise newException(Defect, "nonsense")
+    raise newException(Defect, "inconceivable!")
 
 proc output*(golden: Golden; running: RunningResult; desc: string = "") =
   golden.output running.renderTable(desc)

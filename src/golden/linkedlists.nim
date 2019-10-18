@@ -32,12 +32,14 @@ proc removeNext*(head: var SinglyLinkedNode) =
         head.next = nil
 
 proc pack_type*[ByteStream, T](s: ByteStream; x: ref SinglyLinkedNodeObj[T]) =
-  s.pack(x.next)
+  {.error: "this can't be right...".}
   s.pack(x.value)
+  s.pack(x.next)
 
 proc unpack_type*[ByteStream, T](s: ByteStream; x: var ref SinglyLinkedNodeObj[T]) =
-  s.unpack_type(x.next)
+  {.error: "this can't be right...".}
   s.unpack_type(x.value)
+  s.unpack_type(x.next)
 
 proc pack_type*[ByteStream, T](s: ByteStream; x: SinglyLinkedList[T]) =
   s.pack(x.head)

@@ -22,28 +22,11 @@ proc render*(d: Duration): string {.raises: [].} =
 proc `$`*(detail: FileDetail): string =
   result = detail.path
 
-proc `$`*(runtime: RuntimeInfo): string =
-  result = runtime.wall.render
-
-proc `$`*(invocation: InvocationInfo): string =
-  result = invocation.commandLine
-
-proc toJson(output: OutputInfo): JsonNode =
+proc toJson(invokation: InvocationInfo): JsonNode =
   result = newJObject()
-  result["stdout"] = newJString output.stdout
-  result["stderr"] = newJString output.stderr
-  result["code"] = newJInt output.code
-
-proc `$`*(output: OutputInfo): string =
-  if output.stdout.len != 0:
-    result &= output.stdout
-  if output.stderr.len != 0:
-    if result != "":
-      result &= "\n"
-    result &= output.stderr
-  if result != "":
-    result &= "\n"
-  result &= "exit code: " & $output.code
+  result["stdout"] = newJString invokation.stdout
+  result["stderr"] = newJString invokation.stderr
+  result["code"] = newJInt invokation.code
 
 proc output*(golden: Golden; content: string; style: set[terminal.Style] = {}; fg: ForegroundColor = fgDefault; bg: BackgroundColor = bgDefault) =
   let
@@ -64,24 +47,22 @@ proc output*(golden: Golden; content: JsonNode) =
   ugly.toUgly(content)
   stdout.writeLine ugly
 
-proc output*(golden: Golden; output: OutputInfo) =
-  if ColorConsole in golden.options.flags:
-    if output.stdout.len > 0:
-      golden.output output.stdout, fg = fgCyan
-    if output.stderr.len > 0:
-      golden.output output.stderr, fg = fgRed
-    if output.code != 0:
-      golden.output "exit code: " & $output.code
-  if jsonOutput(golden):
-    golden.output output.toJson
-
-proc output*(golden: Golden; invocation: InvocationInfo; desc: string = "";
+proc output*(golden: Golden; invocation: Gold; desc: string = "";
              arguments: seq[string] = @[]) =
   ## generally used to output a failed invocation
-  golden.output invocation.output
-  if invocation.output.code != 0:
-    new invocation.arguments
+  let invokation = invocation.invokation
+  if ColorConsole in golden.options.flags:
+    if invokation.stdout.len > 0:
+      golden.output invokation.stdout, fg = fgCyan
+    if invokation.stderr.len > 0:
+      golden.output invokation.stderr, fg = fgRed
+    if invokation.code != 0:
+      golden.output "exit code: " & $invokation.code
+  if jsonOutput(golden):
+    golden.output invokation.toJson
+  if invokation.code != 0:
+    new invokation.arguments
     for n in arguments:
-      invocation.arguments[].add n
+      invokation.arguments[].add n
     golden.output "command-line:\n  " & invocation.commandLine
-    invocation.arguments = nil
+    invokation.arguments = nil
