@@ -95,7 +95,7 @@ $ golden --compilation openapi.nim
 ## Command Line Options
 
  - `truth` a float percentage indicating how much jitter you'll accept
- - `runtime` a float of seconds after which we should stop the benchmark
+ - `runtime` a float of seconds after which we should kill each invocation
  - `iterations` a number of invocations after which we should stop the benchmark
  - `storage` the path to a database file you wish to use; must end in `.golden-db`
  - `interactive-forced` assume output friendly to humans
