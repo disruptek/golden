@@ -145,6 +145,7 @@ proc benchmark*(golden: Golden; binary: Gold;
   ## benchmark an arbitrary executable
   let
     wall = getTime()
+    timeLimit = int( 1000 * golden.options.timeLimit )
   var
     bench = newBenchmarkResult()
     invocation: Gold
@@ -160,7 +161,7 @@ proc benchmark*(golden: Golden; binary: Gold;
         {.warning: "this build is for debugging fd leak".}
         invocation = await invoke("/usr/bin/lsof", "-p", getCurrentProcessId())
         golden.output invocation.output.stdout
-      invocation = await invoke(binary, arguments)
+      invocation = await invoke(binary, arguments, timeLimit = timeLimit)
       runs.inc
       if invocation.okay:
         bench.invocations.add invocation
@@ -173,9 +174,11 @@ proc benchmark*(golden: Golden; binary: Gold;
       if RunLimit in golden.options.flags:
         if runs >= golden.options.runLimit:
           truthy = true
-      if TimeLimit in golden.options.flags:
-        if secs.toSeconds >= golden.options.timeLimit:
-          truthy = true
+      when false:
+        # we use the time limit to limit runtime of each invocation now
+        if TimeLimit in golden.options.flags:
+          if secs.toSeconds >= golden.options.timeLimit:
+            truthy = true
       when not defined(debug):
         secs = getTime() - lastOutputTime
         if not truthy and secs.inSeconds < fib:
@@ -183,7 +186,10 @@ proc benchmark*(golden: Golden; binary: Gold;
         lastOutputTime = getTime()
         outputs.inc
         fib = fibonacci(outputs)
-      if truthy or not invocation.okay:
+      if not invocation.okay:
+        bench.terminated = Terminated.Failure
+        break
+      if truthy:
         break
       golden.output bench.benchmark, started = bench.created, "benchmark"
   except BenchmarkusInterruptus as e:

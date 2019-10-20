@@ -172,7 +172,9 @@ proc golden(sources: seq[string];
 
   for b in golden.performBenchmarks(targets):
     try:
-      discard waitfor b
+      let mark = waitfor b
+      if mark.terminated != Terminated.Success:
+        quit(1)
     except BenchmarkusInterruptus:
       break
     except Exception as e:

@@ -70,10 +70,12 @@ else:
     invocation.cpu.ru_utime = sub(ru.ru_utime, invocation.cpu.ru_utime)
     invocation.cpu.ru_stime = sub(ru.ru_stime, invocation.cpu.ru_utime)
 
-proc monitor(gold: var Gold; process: Process) =
+proc monitor(gold: var Gold; process: Process; deadline = -1.0) =
   ## keep a process's output streams empty, saving them into the
-  ## invocation with other runtime details
+  ## invocation with other runtime details; deadline is an epochTime
+  ## after which we should manually terminate the process
   var
+    timeout = 1  # start with a timeout in the future
     clock = getTime()
     watcher = newSelector[Monitor]()
     invocation = gold.invokation
@@ -87,7 +89,33 @@ proc monitor(gold: var Gold; process: Process) =
   block running:
     try:
       while true:
-        let events = watcher.select(1000)
+        if deadline <= 0.0:
+          timeout = -1  # wait forever if no deadline is specified
+        # otherwise, reset the timeout if it hasn't passed
+        elif timeout > 0:
+          let rightNow = epochTime()
+          block checktime:
+            while rightNow < deadline:
+              # the number of ms remaining until the deadline
+              timeout = int( 1000 * (deadline - rightNow) )
+              if timeout > 0:
+                break checktime
+            timeout = -1
+        # if there's a deadline in place, see if we've passed it
+        if deadline > 0.0 and timeout < 0:
+          # the deadline has passed; kill the process
+          process.terminate
+          process.kill
+          # wait for it to exit so that we pass through the loop below only one
+          # additional time.
+          #
+          # if the process is wedged somehow, we will not continue to spawn more
+          # invocations that will DoS the machine.
+          invocation.code = process.waitForExit
+          # make sure we catch any remaining output and
+          # perform the expected measurements
+          timeout = 0
+        let events = watcher.select(timeout)
         foreach ready in events.items of ReadyKey:
           var kind: Monitor = watcher.getData(ready.fd)
           case kind:
@@ -113,6 +141,8 @@ proc monitor(gold: var Gold; process: Process) =
             process.outputStream.drainStreamInto invocation.stdout
             process.errorStream.drainStreamInto invocation.stderr
             break
+        if deadline >= 0:
+          assert timeout > 0, "terminating process failed measurements"
     except IOSelectorsException as e:
       # merely report errors for database safety
       stdmsg().writeLine "error talkin' to process: " & e.msg
@@ -131,11 +161,17 @@ proc monitor(gold: var Gold; process: Process) =
   invocation.code = process.waitForExit
   cpuPostWait(gold, invocation)
 
-proc invoke*(exe: Gold, args: seq[string] = @[]): Future[Gold] {.async.} =
-  ## run a binary and yield info about its invocation
+proc invoke*(exe: Gold; args: seq[string] = @[]; timeLimit = 0): Future[Gold] {.async.} =
+  ## run a binary and yield info about its invocation;
+  ## timeLimit is the number of ms to wait for the process to complete.
+  ## a timeLimit of 0 means, "wait forever for completion."
   var
     gold = newInvocation(exe, args = nil)
     binary = gold.binary
+    deadline = -1.0
+
+  if timeLimit > 0:
+    deadline = epochTime() + timeLimit.float / 1000  # timeLimit is in seconds
 
   # mark the current cpu time
   cpuMark(gold, gold.invokation)
@@ -144,17 +180,17 @@ proc invoke*(exe: Gold, args: seq[string] = @[]): Future[Gold] {.async.} =
     process = startProcess(binary.file.path, args = args, options = {})
 
   # watch the process to gather i/o and runtime details
-  gold.monitor(process)
+  gold.monitor(process, deadline = deadline)
   # cleanup the process
   process.close
 
   result = gold
 
-proc invoke*(path: string; args: varargs[string, `$`]): Future[Gold] =
+proc invoke*(path: string; args: varargs[string, `$`]; timeLimit = -1): Future[Gold] =
   ## convenience invoke()
   var
     arguments: seq[string]
     binary = newFileDetailWithInfo(path)
   for a in args.items:
     arguments.add a
-  result = binary.invoke(arguments)
+  result = binary.invoke(arguments, timeLimit = timeLimit)
