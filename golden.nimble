@@ -1,4 +1,4 @@
-version = "2.5.2"
+version = "3.0.0"
 author = "disruptek"
 description = "a benchmark tool"
 license = "MIT"
