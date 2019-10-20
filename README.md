@@ -97,7 +97,7 @@ $ golden --compilation openapi.nim
  - `truth` a float percentage indicating how much jitter you'll accept
  - `runtime` a float of seconds after which we should kill each invocation
  - `iterations` a number of invocations after which we should stop the benchmark
- - `storage` the path to a database file you wish to use; must end in `.golden-db`
+ - `storage` the path to a database file you wish to use; must end in `.golden-lmdb`
  - `interactive-forced` assume output friendly to humans
  - `json-output` assume output friendly to machines _(work in progress)_
  - `color-forced` enable color output when not in `interactive` mode
