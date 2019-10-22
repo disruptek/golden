@@ -93,13 +93,19 @@ proc monitor(gold: var Gold; process: Process; deadline = -1.0) =
           timeout = -1  # wait forever if no deadline is specified
         # otherwise, reset the timeout if it hasn't passed
         elif timeout > 0:
+          # cache the current time
           let rightNow = epochTime()
           block checktime:
+            # this is an `if` that we may use to break the checktime block
             while rightNow < deadline:
               # the number of ms remaining until the deadline
               timeout = int( 1000 * (deadline - rightNow) )
+              # if there is time left, we're done here
               if timeout > 0:
                 break checktime
+              # otherwise, we'll fall through, setting the timeout to -1
+              # which will cause us to kill the process...
+              break
             timeout = -1
         # if there's a deadline in place, see if we've passed it
         if deadline > 0.0 and timeout < 0:
