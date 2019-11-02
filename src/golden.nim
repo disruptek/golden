@@ -1,8 +1,10 @@
 import os
+import options
 import asyncfutures
 import asyncdispatch
 import strutils
 
+import bump
 import cligen
 
 import golden/spec
@@ -190,4 +192,11 @@ when isMainModule:
   let logger = newConsoleLogger(useStderr=true, levelThreshold=level)
   addHandler(logger)
 
-  dispatch(golden, stopWords = @["--"])
+  const
+    version = projectVersion()
+  if version.isSome:
+    clCfg.version = $version.get
+  else:
+    clCfg.version = "(unknown version)"
+
+  dispatchCf(golden, cf = clCfg, stopWords = @["--"])
