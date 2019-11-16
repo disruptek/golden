@@ -9,7 +9,7 @@ proc consolePlot*(stat: RunningStat; histogram: seq[int];
   ## create a simple plot for display on the console via kitty
   result = createTemporaryFile("-image", ".png")
   var
-    data: Dataset
+    data: seq[XY]
     p: Plot = newPlot(1600, 1600)
 
   # use this to rescale small values
@@ -28,5 +28,5 @@ proc consolePlot*(stat: RunningStat; histogram: seq[int];
     data.add (m * (stat.min.float + (class.float * dimensions.size)), value.float)
   p.setTitle("benchmark")
   p.setFontTtf("fonts/Vera.ttf") # sorry!
-  p.addGraph(data, Line, rgba(0, 0, 255, 255))
+  p.addPlot(data, Line, rgba(0, 0, 255, 255))
   p.save(result)
