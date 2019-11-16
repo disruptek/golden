@@ -126,9 +126,9 @@ proc umaskFriendlyPerms*(executable: bool): Mode =
   discard umask(result)
 
   if executable:
-    result = S_IWUSR.Mode or S_IRUSR.Mode or S_IXUSR.Mode or (0o777 xor result)
+    result = S_IWUSR.Mode or S_IRUSR.Mode or S_IXUSR.Mode or (result xor 0o777)
   else:
-    result = S_IWUSR.Mode or S_IRUSR.Mode or (0o666 xor result)
+    result = S_IWUSR.Mode or S_IRUSR.Mode or (result xor 0o666)
 
 proc open(self: var GoldenDatabase; path: string) =
   ## open the database
