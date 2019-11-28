@@ -1,4 +1,4 @@
-version = "3.0.8"
+version = "3.0.9"
 author = "disruptek"
 description = "a benchmark tool"
 license = "MIT"
@@ -10,7 +10,7 @@ requires "nimetry >= 0.4.0"
 #requires "plotly >= 0.1.0"
 requires "msgpack4nim 0.2.9"
 requires "terminaltables#82ee5890c13e381de0f11c8ba6fe484d7c0c2f19"
-requires "nimgit2 0.1.0"
+requires "nimgit2 >= 0.1.0"
 
 # we need this one for csize reasons
 requires "lmdb 0.1.2"
@@ -18,5 +18,4 @@ requires "lmdb 0.1.2"
 requires "cligen >= 0.9.40"
 
 bin = @["golden"]
-
 srcDir = "src"
