@@ -1,11 +1,11 @@
-version = "3.0.9"
+version = "3.0.10"
 author = "disruptek"
 description = "a benchmark tool"
 license = "MIT"
 requires "nim >= 0.20.0"
 
 requires "foreach >= 1.0.2"
-requires "bump >= 1.8.11"
+requires "bump >= 1.8.15"
 requires "nimetry >= 0.4.0"
 #requires "plotly >= 0.1.0"
 requires "msgpack4nim 0.2.9"
