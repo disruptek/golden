@@ -106,7 +106,7 @@ $ golden --compilation openapi.nim
  - `dry-run` don't write any results to the database
  - `histogram-classes` the number of points in the histogram
  - `compilation-only` benchmark the Nim compiler on the given source(s)
- - `brief` only output the statistics at the completion of the benchmark.
+ - `brief` only output the statistics at the completion of the benchmark
  - `never-output` never emit anything via stdout/stderr
  - `dump-output` always print the stdout/stderr of the benchmarked program
  - `--` the following arguments are passed to the compiler and runtime. Note that if you supply `-- cpp` for compilation via C++, you will need to supply your own defines such as `-d:danger`.
