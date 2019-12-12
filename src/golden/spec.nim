@@ -176,6 +176,7 @@ type
     RunLimit
     DumpOutput
     NeverOutput
+    Brief
 
   GoldenOptions* = object
     flags*: set[GoldenFlag]

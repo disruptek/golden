@@ -103,7 +103,7 @@ iterator performBenchmarks(golden: Golden; targets: seq[string]): Future[Gold] =
         # just benchmark it; it's already executable, we hope
         yield golden.benchmark(filename, golden.options.arguments)
 
-proc golden(sources: seq[string];
+proc golden(sources: seq[string]; brief = false;
             compilation_only: bool = false; dump_output: bool = false;
             iterations: int = 0; runtime: float = 0.0; never_output: bool = false;
             color_forced: bool = false; json_output: bool = false;
@@ -137,6 +137,8 @@ proc golden(sources: seq[string];
     golden.options.flags.incl DumpOutput
   if never_output:
     golden.options.flags.incl NeverOutput
+  if brief:
+    golden.options.flags.incl Brief
 
   golden.options.honesty = truth
   golden.options.prune = prune_outliers

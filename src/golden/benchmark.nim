@@ -191,7 +191,8 @@ proc benchmark*(golden: Golden; binary: Gold;
         break
       if truthy:
         break
-      golden.output bench.benchmark, started = bench.created, "benchmark"
+      if Brief notin golden.options.flags:
+        golden.output bench.benchmark, started = bench.created, "benchmark"
   except BenchmarkusInterruptus as e:
     bench.terminated = Terminated.Interrupt
     raise e
