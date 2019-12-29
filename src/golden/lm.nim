@@ -117,18 +117,19 @@ proc removeDatabase*(self: var GoldenDatabase; flags: set[GoldenFlag]) =
   if DryRun notin flags:
     removeStorage(self.path)
 
-proc umaskFriendlyPerms*(executable: bool): Mode =
-  ## compute permissions for new files which are sensitive to umask
+when defined(LongWayHome):
+  proc umaskFriendlyPerms*(executable: bool): Mode =
+    ## compute permissions for new files which are sensitive to umask
 
-  # set it to 0 but read the last value
-  result = umask(0)
-  # set it to that value and discard zero
-  discard umask(result)
+    # set it to 0 but read the last value
+    result = umask(0)
+    # set it to that value and discard zero
+    discard umask(result)
 
-  if executable:
-    result = S_IWUSR.Mode or S_IRUSR.Mode or S_IXUSR.Mode or (result xor 0o777)
-  else:
-    result = S_IWUSR.Mode or S_IRUSR.Mode or (result xor 0o666)
+    if executable:
+      result = S_IWUSR.Mode or S_IRUSR.Mode or S_IXUSR.Mode or (result xor 0o777)
+    else:
+      result = S_IWUSR.Mode or S_IRUSR.Mode or (result xor 0o666)
 
 proc open(self: var GoldenDatabase; path: string) =
   ## open the database
