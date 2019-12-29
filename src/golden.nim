@@ -103,13 +103,12 @@ iterator performBenchmarks(golden: Golden; targets: seq[string]): Future[Gold] =
         # just benchmark it; it's already executable, we hope
         yield golden.benchmark(filename, golden.options.arguments)
 
-proc golden(sources: seq[string]; brief = false;
-            compilation_only: bool = false; dump_output: bool = false;
-            iterations: int = 0; runtime: float = 0.0; never_output: bool = false;
-            color_forced: bool = false; json_output: bool = false;
-            interactive_forced: bool = false; graphs_in_console: bool = false;
-            prune_outliers: float = 0.0; histogram_classes: int = 10;
-            truth: float = 0.0; dry_run: bool = false; storage_path: string = "") {.used.} =
+proc golden(sources: seq[string]; brief = false; compilation_only = false;
+            dump_output = false; iterations = 0; runtime = 0.0;
+            never_output = false; color_forced = false; json_output = false;
+            interactive_forced = false; prune_outliers = 0.0;
+            histogram_classes = 10; truth = 0.0; dry_run = false;
+            storage_path = "") {.used.} =
   ## Nim benchmarking tool;
   ## pass 1+ .nim source files to compile and benchmark
   var
@@ -127,7 +126,7 @@ proc golden(sources: seq[string]; brief = false;
     golden.options.flags.incl Interactive
   if Interactive in golden.options.flags and color_forced:
     golden.options.flags.incl ColorConsole
-  if graphs_in_console:
+  when defined(plotGraphs):
     golden.options.flags.incl ConsoleGraphs
   if dry_run:
     golden.options.flags.incl DryRun

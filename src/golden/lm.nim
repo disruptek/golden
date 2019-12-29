@@ -65,7 +65,7 @@ type
     path: string
     store: FileInfo
     version: ModelVersion
-    db: LMDBEnv
+    db: ptr MDBEnv
     flags: set[GoldenFlag]
     when defined(Heapster):
       ## this won't help
@@ -84,7 +84,7 @@ proc close*(self: var GoldenDatabase) =
         goldenDebug()
         when defined(debug):
           echo "OLD CLOSE"
-        envClose(self.db)
+        mdb_env_close(self.db)
         when defined(debug):
           echo "OLD CLOSE complete"
       else:
@@ -141,7 +141,7 @@ proc open(self: var GoldenDatabase; path: string) =
       flags: int = 0
 
   if DryRun in self.flags:
-    flags = RdOnly
+    flags = MDB_RdOnly
   else:
     flags = 0
     createStorage(path)
@@ -163,21 +163,24 @@ proc open(self: var GoldenDatabase; path: string) =
         GC_ref(env)
         self.db = addr env[]
     else:
-      var e = Env()
+      var e: MDBEnv
       self.db = addr e
-    assert envCreate(addr self.db) == 0
-    self.db.setMaxDBs(MAXDBS)
-    assert self.db.envOpen(path.cstring, flags, mode) == 0
+    if mdb_env_create(addr self.db) != 0:
+      raise newException(IOError, "unable to instantiate db")
+    if mdb_env_set_maxdbs(self.db, MAXDBS) != 0:
+      raise newException(IOError, "unable to set max dbs")
+    if mdb_env_open(self.db, path.cstring, flags, mode) != 0:
+      raise newException(IOError, "unable to open db")
   else:
     self.db = newLMDBEnv(path, maxdbs = MAXDBS, openflags = flags)
   goldenDebug()
   assert self.isOpen
 
-proc newTransaction(self: GoldenDatabase): LMDBTxn =
+proc newTransaction(self: GoldenDatabase): ptr MDBTxn =
   assert self.isOpen
   var flags: cuint
   if DryRun in self.flags:
-    flags = RdOnly
+    flags = MDB_RdOnly
   else:
     flags = 0
   #
@@ -185,7 +188,7 @@ proc newTransaction(self: GoldenDatabase): LMDBTxn =
   # area where a memory change for LongWayHome may end up being relevant
   when true or defined(LongWayHome):
     var
-      parent: LMDBTxn
+      parent: ptr MDBTxn
 
     when defined(Heapster):
       proc heapTxn(): ref Txn =
@@ -202,27 +205,29 @@ proc newTransaction(self: GoldenDatabase): LMDBTxn =
         GC_ref(txn)
         result = addr txn[]
     else:
-      var txn = Txn()
+      var txn: MDB_Txn
       result = addr txn
     assert parent == nil
-    assert txnBegin(self.db, parent, flags = flags, addr result) == 0
+    if mdb_txn_begin(self.db, parent, flags = flags, addr result) != 0:
+      raise newException(IOError, "unable to begin transaction")
   else:
     # but, we cannot use this with DryRun, so it's an error to try
     {.error: "this build doesn't work with DryRun".}
     result = newTxn(self.db)
   assert result != nil
 
-proc newHandle(self: GoldenDatabase; transaction: LMDBTxn;
-               version: ModelVersion): Dbi =
+proc newHandle(self: GoldenDatabase; transaction: ptr MDBTxn;
+               version: ModelVersion): MDBDbi =
   assert self.isOpen
   var flags: cuint
   if DryRun in self.flags:
     flags = 0
   else:
-    flags = Create
-  result = dbiOpen(transaction, $ord(version), flags)
+    flags = MDB_Create
+  if mdb_dbi_open(transaction, $ord(version), flags, addr result) != 0:
+    raise newException(IOError, "unable to create db handle")
 
-proc newHandle(self: GoldenDatabase; transaction: LMDBTxn): Dbi =
+proc newHandle(self: GoldenDatabase; transaction: ptr MDBTxn): MDBDbi =
   result = self.newHandle(transaction, self.version)
 
 proc getModelVersion(self: GoldenDatabase): ModelVersion =
@@ -231,7 +236,7 @@ proc getModelVersion(self: GoldenDatabase): ModelVersion =
   let
     transaction = self.newTransaction
   defer:
-    abort(transaction)
+    mdb_txn_abort(transaction)
 
   for version in countDown(ModelVersion.high, ModelVersion.low):
     try:
@@ -269,11 +274,35 @@ when false:
 
   let tzUTC* = newTimezone("Somewhere/UTC", utcTzInfo, utcTzInfo)
 
-proc fetchViaOid(transaction: LMDBTxn;
-                 handle: Dbi; oid: Oid): Option[string] =
+proc get(transaction: ptr MDBTxn; handle: MDBDbi; key: string): string =
+  var
+    key = MDBVal(mvSize: key.len.uint, mvData: key.cstring)
+    value: MDBVal
+
+  if mdb_get(transaction, handle, addr(key), addr(value)) != 0:
+    raise newException(IOError, "unable to get value for key")
+
+  result = newStringOfCap(value.mvSize)
+  result.setLen(value.mvSize)
+  copyMem(cast[pointer](result.cstring), cast[pointer](value.mvData),
+          value.mvSize)
+  assert result.len == value.mvSize.int
+
+proc put(transaction: ptr MDBTxn; handle: MDBDbi;
+         key: string; value: string; flags = 0) =
+  var
+    key = MDBVal(mvSize: key.len.uint, mvData: key.cstring)
+    value = MDBVal(mvSize: value.len.uint, mvData: value.cstring)
+
+  if mdb_put(transaction, handle, addr key, addr value, flags.cuint) != 0:
+    raise newException(IOError, "unable to put value for key")
+
+proc fetchViaOid(transaction: ptr MDBTxn;
+                 handle: MDBDbi; oid: Oid): Option[string] =
   defer:
-    abort(transaction)
-  return some(transaction.get(handle, $oid))
+    mdb_txn_abort(transaction)
+
+  result = get(transaction, handle, $oid).some
 
 proc fetchVia*(self: GoldenDatabase; oid: Oid): Option[string] =
   assert self.isOpen
@@ -289,7 +318,7 @@ proc read*(self: GoldenDatabase; gold: var Gold) =
     transaction = self.newTransaction
     handle = self.newHandle(transaction)
   defer:
-    abort(transaction)
+    mdb_txn_abort(transaction)
   let existing = transaction.get(handle, $gold.oid)
   unpack(existing, gold)
   gold.dirty = false
@@ -301,11 +330,12 @@ proc write*(self: GoldenDatabase; gold: var Gold) =
     transaction = self.newTransaction
     handle = self.newHandle(transaction)
   try:
-    transaction.put(handle, $gold.oid, pack(gold), NoOverWrite)
-    commit(transaction)
+    transaction.put(handle, $gold.oid, pack(gold), MDB_NoOverWrite)
+    if mdb_txn_commit(transaction) != 0:
+      raise newException(IOError, "unable to commit transaction")
     gold.dirty = false
   except Exception as e:
-    abort(transaction)
+    mdb_txn_abort(transaction)
     raise e
 
 proc storagePath(filename: string): string =
