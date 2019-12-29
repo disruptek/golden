@@ -111,7 +111,7 @@ suite "database":
         continue
       checkpoint "memory leak " & $leak & " for " & $k & " opens " & $(occupied - start)
       # to see if it's changing over iteration
-      check occupied - start <= 0
+      check occupied - start <= opens * sizeof(pointer)
 
     # recreate the file so we can confirm permissions
     db = waitfor golden.openDatabase(targets)

@@ -2,7 +2,7 @@ version = "3.0.12"
 author = "disruptek"
 description = "a benchmark tool"
 license = "MIT"
-requires "nim >= 0.20.0"
+requires "nim >= 1.0.4"
 
 requires "foreach >= 1.0.2"
 requires "bump >= 1.8.15"
