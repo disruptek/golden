@@ -1,26 +1,22 @@
-# golden
+# golden [![Build Status](https://travis-ci.org/disruptek/golden.svg?branch=master)](https://travis-ci.org/disruptek/golden)
 
 A benchmarking tool that measures and records runtime of any executable and
 also happens to know how to compile Nim.
 
-Currently pretty crude, but things are coming together.
+The idea here is that we're gonna make a record of everything we run,
+everything we build, and be able to discover and pinpoint regressions
+automatically using native git-fu performed by the tool.  Fire and forget!
 
 ## Installation
 
-### Lightning Memory-Mapped Database
+### Nimph
 
-You will need to install LMDB so that the Nim wrapper can bind to it. [This
-is a link to the Nim wrapper](https://github.com/FedericoCeratto/nim-lmdb)
-and [this is a link to the Symas web-page with more information on
-LMDB](https://symas.com/lmdb/).
-
-It may sound like I'm asking you to install a behemoth closed-source binary.
-**This is not that**. It's open, _very_ small, _very_ fast, and I was already
-using it on my system for `postfix` and `neomutt` when I decided to use it here.
+```
+$ nimph clone golden
+```
 
 ### Nimble
 
-If LMDB is installed, you can simply
 ```
 $ nimble install golden
 ```
@@ -33,8 +29,7 @@ statistics periodically.
 If you pass it some Nim source, it will compile it for you and report some
 compilation and runtime statistics periodically.
 
-By default, it will run forever. Luckily, it handles a SIGINT more gracefully
-than my ex-wife.
+By default, it will run until you interrupt it.
 
 ```
 $ golden --truth=0.002 bench.nim
@@ -101,7 +96,6 @@ $ golden --compilation openapi.nim
  - `interactive-forced` assume output friendly to humans
  - `json-output` assume output friendly to machines _(work in progress)_
  - `color-forced` enable color output when not in `interactive` mode
- - `graphs-in-console` periodically produce graphs (PNG) and display them in a Kitty console
  - `prune-outliers` throw out this percentage of aberrant invocations with long runtime in order to clean up the histogram
  - `dry-run` don't write any results to the database
  - `histogram-classes` the number of points in the histogram

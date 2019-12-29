@@ -93,10 +93,10 @@ suite "database":
 
   test "create, destroy, leak":
     let
-      d = 4
-      opens = d * 10
+      d = 6
+      opens = d * 80
 
-    checkpoint "expecting a leak of <408 bytes"
+    checkpoint "expecting a leak of 2312 bytes"
     var leak = 0
     for j in 0 ..< d:
       var start = quiesceMemory("starting memory:")
@@ -108,13 +108,10 @@ suite "database":
       # measure the first and second values
       if leak == 0 or k < 2:
         leak = occupied - start
-      when defined(debug):
-        echo "memory leak to " & $leak & " for " & $k & " opens " & $(occupied - start)
-      else:
-        checkpoint "memory leak " & $leak & " for " & $k & " opens " & $(occupied - start)
+        continue
+      checkpoint "memory leak " & $leak & " for " & $k & " opens " & $(occupied - start)
       # to see if it's changing over iteration
-      # 408 was achieved when removing the database... stdlib leaks?
-      check occupied - start <= 0 or leak == occupied - start or leak <= 200
+      check occupied - start <= 0
 
     # recreate the file so we can confirm permissions
     db = waitfor golden.openDatabase(targets)
