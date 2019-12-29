@@ -139,6 +139,7 @@ proc golden(sources: seq[string]; brief = false;
     golden.options.flags.incl NeverOutput
   if brief:
     golden.options.flags.incl Brief
+    golden.output "in brief mode, you will only receive output at termination..."
 
   golden.options.honesty = truth
   golden.options.prune = prune_outliers
