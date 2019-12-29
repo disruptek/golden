@@ -27,7 +27,8 @@ suite "compile and invoke":
     if fileExists(target):
       removeFile(target)
     let
-      simple = waitfor compileFile(exampleNim.file.path)
+      args = @["c", "--outdir=" & target.parentDir]
+      simple = waitfor compileFile(exampleNim.file.path, args)
     check simple.okay
     check simple.target.file.path == target
     check simple.target.file.path.fileExists
