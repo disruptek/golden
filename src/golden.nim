@@ -6,6 +6,7 @@ import strutils
 
 import bump
 import cligen
+import gittyup
 
 import golden/spec
 import golden/benchmark
@@ -13,13 +14,9 @@ import golden/compilation
 
 import golden/lm as dbImpl
 
-when defined(git2SetVer):
-  import golden/git as git
-
 when false:
   proc shutdown(golden: Golden) {.async.} =
-    when defined(git2SetVer):
-      git.shutdown()
+    gittyup.shutdown()
 
 proc `$`*(gold: Gold): string =
   case gold.kind:
@@ -115,10 +112,11 @@ proc golden(sources: seq[string]; brief = false; compilation_only = false;
     targets: seq[string]
     golden = newGolden()
 
-  when defined(git2SetVer):
-    git.init()
-    defer:
-      git.shutdown()
+  if not gittyup.init():
+    raise newException(OSError, "unable to init git")
+  defer:
+    if not gittyup.shutdown():
+      raise newException(OSError, "unable to shut git")
 
   if json_output:
     golden.options.flags.incl PipeOutput

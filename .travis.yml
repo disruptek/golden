@@ -1,7 +1,9 @@
 os:
-  - windows
+# windows is not supported yet
+# - windows
   - linux
-  - osx
+# osx is not supported yet
+# - osx
 
 language: c
 

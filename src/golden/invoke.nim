@@ -54,7 +54,7 @@ else:
 
   proc sub(a: Timeval; b: Timeval): Timeval =
     result.tv_sec = posix.Time(a.tv_sec.int - b.tv_sec.int)
-    result.tv_usec = a.tv_usec.int - b.tv_usec.int
+    result.tv_usec = a.tv_usec - b.tv_usec
     if result.tv_usec < 0:
       result.tv_sec.dec
       result.tv_usec.inc 1_000_000

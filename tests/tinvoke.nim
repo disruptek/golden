@@ -15,7 +15,6 @@ suite "compile and invoke":
       gold {.used.} = newCompilation(compiler, exampleNim.file.path)
 
   test "assumptions":
-    check gold.compiler.chash != ""
     check gold.compiler.version != ""
     check gold.argumentsForCompilation(@[]) == @["c", "-d:danger"]
     check gold.argumentsForCompilation(@["umm"]) == @["c", "umm"]
