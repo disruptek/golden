@@ -20,6 +20,7 @@ proc sniffCompilerGitHash*(compiler: Gold): Future[string] {.async.} =
   const pattern = "git hash: "
   var binary = newFileDetailWithInfo(compiler.binary)
   let invocation = await invoke(binary, @["--version"])
+  echo invocation.invokation.stdout
   if invocation.okay:
     for line in invocation.invokation.stdout.splitLines:
       if line.startsWith(pattern):
