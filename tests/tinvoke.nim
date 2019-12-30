@@ -16,7 +16,6 @@ suite "compile and invoke":
 
   test "assumptions":
     check gold.compiler.version != ""
-    check gold.compiler.chash != ""
     check gold.argumentsForCompilation(@[]) == @["c", "-d:danger"]
     check gold.argumentsForCompilation(@["umm"]) == @["c", "umm"]
     check gold.argumentsForCompilation(@["cpp", "-d:debug"]) == @["cpp", "-d:debug"]
