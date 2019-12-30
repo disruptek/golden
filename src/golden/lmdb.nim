@@ -6,7 +6,7 @@ const
   baseDir = getProjectCacheDir("nimlmdb")
 
 static:
-  cDebug()
+  #cDebug()
 
   gitPull(
     "https://github.com/LMDB/lmdb",
