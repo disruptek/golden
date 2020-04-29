@@ -1,7 +1,10 @@
-# golden [![Build Status](https://travis-ci.org/disruptek/golden.svg?branch=master)](https://travis-ci.org/disruptek/golden)
+# golden
 
 A benchmarking tool that measures and records runtime of any executable and
 also happens to know how to compile Nim.
+
+- `cpp +/ nim-1.0` [![Build Status](https://travis-ci.org/disruptek/golden.svg?branch=master)](https://travis-ci.org/disruptek/golden)
+- `arc +/ cpp +/ nim-1.3` [![Build Status](https://travis-ci.org/disruptek/golden.svg?branch=devel)](https://travis-ci.org/disruptek/golden)
 
 The idea here is that we're gonna make a record of everything we run,
 everything we build, and be able to discover and pinpoint regressions

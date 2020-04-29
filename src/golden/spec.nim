@@ -283,7 +283,7 @@ else:
 proc linkTarget(gold: Gold): LinkTarget =
   result = LinkTarget(oid: gold.oid, kind: gold.kind)
 
-func newLink(source: Gold; flags: set[LinkFlag]; target: Gold;
+proc newLink(source: Gold; flags: set[LinkFlag]; target: Gold;
              dirty = true): Link =
   result = Link(flags: flags, entry: getTime(), dirty: dirty,
                   source: source.linkTarget, target: target.linkTarget)
