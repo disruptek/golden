@@ -1,4 +1,4 @@
-version = "3.0.13"
+version = "3.0.14"
 author = "disruptek"
 description = "a benchmark tool"
 license = "MIT"
@@ -8,7 +8,7 @@ requires "foreach >= 1.0.2"
 requires "bump >= 1.8.15"
 requires "msgpack4nim 0.2.9"
 requires "terminaltables#82ee5890c13e381de0f11c8ba6fe484d7c0c2f19"
-requires "https://github.com/disruptek/gittyup >= 2.1.13"
+requires "https://github.com/disruptek/gittyup >= 2.4.4 & < 3.0.0"
 
 # we need this one for csize reasons
 requires "cligen >= 0.9.40"
