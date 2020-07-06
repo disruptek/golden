@@ -164,8 +164,8 @@ proc open(self: var GoldenDatabase; path: string) =
         GC_ref(env)
         self.db = addr env[]
     else:
-      var e: MDBEnv
-      self.db = addr e
+      var e: ptr MDBEnv
+      self.db = e
     if mdb_env_create(addr self.db) != 0:
       raise newException(IOError, "unable to instantiate db")
     if mdb_env_set_maxdbs(self.db, MAXDBS) != 0:
@@ -206,8 +206,8 @@ proc newTransaction(self: GoldenDatabase): ptr MDBTxn =
         GC_ref(txn)
         result = addr txn[]
     else:
-      var txn: MDB_Txn
-      result = addr txn
+      var txn: ptr MDB_Txn
+      result = txn
     assert parent == nil
     if mdb_txn_begin(self.db, parent, flags = flags, addr result) != 0:
       raise newException(IOError, "unable to begin transaction")
